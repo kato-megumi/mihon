@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.viewer
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.PointF
 import android.graphics.RectF
 import android.graphics.drawable.Animatable
@@ -25,8 +26,6 @@ import coil3.imageLoader
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.crossfade
-import coil3.size.Precision
-import coil3.size.ViewSizeResolver
 import com.davemorrissey.labs.subscaleview.ImageSource
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView.EASE_IN_OUT_QUAD
@@ -37,12 +36,17 @@ import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.data.coil.cropBorders
 import eu.kanade.tachiyomi.data.coil.customDecoder
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonSubsamplingImageView
+import eu.kanade.tachiyomi.util.system.BitmapScaler
+import eu.kanade.tachiyomi.util.system.GLInterpolator
 import eu.kanade.tachiyomi.util.system.animatorDurationScale
 import eu.kanade.tachiyomi.util.view.isVisibleOnScreen
+import logcat.LogPriority
+import logcat.logcat
 import okio.BufferedSource
 import tachiyomi.core.common.util.system.ImageUtil
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import kotlin.math.roundToInt
 
 /**
  * A wrapper view for showing page image.
@@ -67,6 +71,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
     private var pageView: View? = null
 
     private var config: Config? = null
+
+    // Store bitmaps for toggle and save functionality
+    private var originalBitmap: Bitmap? = null
+    private var scaledBitmap: Bitmap? = null
+    private var isShowingScaled: Boolean = true
 
     var onImageLoaded: (() -> Unit)? = null
     var onImageLoadError: ((Throwable?) -> Unit)? = null
@@ -149,6 +158,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     fun setImage(drawable: Drawable, config: Config) {
         this.config = config
+        // Clear previous bitmaps
+        originalBitmap = null
+        scaledBitmap = null
+        isShowingScaled = true
+
         if (drawable is Animatable) {
             prepareAnimatedImageView()
             setAnimatedImage(drawable, config)
@@ -160,6 +174,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     fun setImage(source: BufferedSource, isAnimated: Boolean, config: Config) {
         this.config = config
+        // Clear previous bitmaps
+        originalBitmap = null
+        scaledBitmap = null
+        isShowingScaled = true
+
         if (isAnimated) {
             prepareAnimatedImageView()
             setAnimatedImage(source, config)
@@ -167,6 +186,86 @@ open class ReaderPageImageView @JvmOverloads constructor(
             prepareNonAnimatedImageView()
             setNonAnimatedImage(source, config)
         }
+    }
+
+    /**
+     * Get the scaled/interpolated bitmap if available.
+     */
+    fun getScaledBitmap(): Bitmap? = scaledBitmap
+
+    /**
+     * Check if interpolation was applied (scaled bitmap differs from original).
+     */
+    fun hasScaledImage(): Boolean = scaledBitmap != null && originalBitmap != null && scaledBitmap != originalBitmap
+
+    /**
+     * Check if currently showing scaled image.
+     */
+    fun isShowingScaledImage(): Boolean = isShowingScaled
+
+    /**
+     * Toggle between original and scaled image.
+     * Returns true if now showing scaled, false if showing original.
+     */
+    fun toggleScaledOriginal(): Boolean {
+        val ssiv = pageView as? SubsamplingScaleImageView ?: return isShowingScaled
+        val original = originalBitmap ?: run {
+            android.util.Log.d("ReaderPageImageView", "originalBitmap is null")
+            return isShowingScaled
+        }
+        val scaled = scaledBitmap ?: run {
+            android.util.Log.d("ReaderPageImageView", "scaledBitmap is null")
+            return isShowingScaled
+        }
+
+        if (original == scaled) {
+            android.util.Log.d("ReaderPageImageView", "originalBitmap == scaledBitmap")
+            return isShowingScaled
+        }
+
+        // Check if bitmaps are still valid
+        if (original.isRecycled) {
+            android.util.Log.d("ReaderPageImageView", "originalBitmap is recycled")
+            return isShowingScaled
+        }
+        if (scaled.isRecycled) {
+            android.util.Log.d("ReaderPageImageView", "scaledBitmap is recycled")
+            return isShowingScaled
+        }
+
+        // Save current view state
+        val currentScale = ssiv.scale
+        val currentCenter = ssiv.center
+
+        isShowingScaled = !isShowingScaled
+        val bitmapToShow = if (isShowingScaled) scaled else original
+        android.util.Log.d(
+            "ReaderPageImageView",
+            "Toggling to ${if (isShowingScaled) "scaled" else "original"} bitmap: ${bitmapToShow.width}x${bitmapToShow.height}",
+        )
+
+        // Use a copy of the bitmap to prevent issues with SSIV recycling
+        val bitmapCopy = bitmapToShow.copy(Bitmap.Config.ARGB_8888, false)
+        if (bitmapCopy == null) {
+            android.util.Log.d("ReaderPageImageView", "bitmapCopy is null, reverting toggle")
+            return !isShowingScaled // Revert toggle
+        }
+
+        ssiv.recycle()
+        ssiv.setImage(ImageSource.bitmap(bitmapCopy))
+
+        // Restore view state after image is ready
+        ssiv.setOnImageEventListener(object : SubsamplingScaleImageView.DefaultOnImageEventListener() {
+            override fun onReady() {
+                android.util.Log.d("ReaderPageImageView", "Image ready, restoring scale/center")
+                if (currentCenter != null) {
+                    ssiv.setScaleAndCenter(currentScale, currentCenter)
+                }
+                ssiv.setOnImageEventListener(null)
+            }
+        })
+
+        return isShowingScaled
     }
 
     fun recycle() = pageView?.let {
@@ -281,6 +380,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         setMinimumScaleType(config.minimumScaleType)
         setMinimumDpi(1) // Just so that very small image will be fit for initial load
         setCropBorders(config.cropBorders)
+
         setOnImageEventListener(
             object : SubsamplingScaleImageView.DefaultOnImageEventListener() {
                 override fun onReady() {
@@ -297,17 +397,39 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
         when (data) {
             is BitmapDrawable -> {
-                setImage(ImageSource.bitmap(data.bitmap))
+                // Always copy to keep a stored copy independent from the one SSIV may recycle
+                val originalCopy = if (data.bitmap.config == Bitmap.Config.HARDWARE) {
+                    data.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+                } else {
+                    data.bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: data.bitmap
+                }
+                originalBitmap = originalCopy
+
+                val interpolated = applyInterpolationIfNeeded(originalCopy, config.interpolationMethod)
+                val scaledCopy = if (interpolated != originalCopy) {
+                    // interpolated already a new bitmap
+                    interpolated
+                } else {
+                    interpolated.copy(Bitmap.Config.ARGB_8888, false) ?: interpolated
+                }
+                scaledBitmap = scaledCopy
+
+                // Use a separate display copy so SSIV recycling won't touch stored references
+                val displayBitmap = scaledCopy.copy(Bitmap.Config.ARGB_8888, false) ?: scaledCopy
+                setImage(ImageSource.bitmap(displayBitmap))
                 isVisible = true
             }
             is BufferedSource -> {
-                if (!isWebtoon || alwaysDecodeLongStripWithSSIV) {
+                // Use SSIV with hardware bitmap for default linear interpolation in paged mode
+                if ((!isWebtoon || alwaysDecodeLongStripWithSSIV) && config.interpolationMethod == 2) {
                     setHardwareConfig(ImageUtil.canUseHardwareBitmap(data))
                     setImage(ImageSource.inputStream(data.inputStream()))
                     isVisible = true
                     return@apply
                 }
 
+                // For custom interpolation or webtoon mode, decode through Coil
+                // Decode at ORIGINAL size to preserve quality for custom interpolation
                 ImageRequest.Builder(context)
                     .data(data)
                     .memoryCachePolicy(CachePolicy.DISABLED)
@@ -315,7 +437,30 @@ open class ReaderPageImageView @JvmOverloads constructor(
                     .target(
                         onSuccess = { result ->
                             val image = result as BitmapImage
-                            setImage(ImageSource.bitmap(image.bitmap))
+
+                            logcat(LogPriority.DEBUG) {
+                                "Loaded original bitmap: ${image.bitmap.width}x${image.bitmap.height}"
+                            }
+
+                            // Always copy to keep stored copy independent from the one SSIV may recycle
+                            val originalCopy = if (image.bitmap.config == Bitmap.Config.HARDWARE) {
+                                image.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+                            } else {
+                                image.bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: image.bitmap
+                            }
+                            originalBitmap = originalCopy
+
+                            val interpolated = applyInterpolationIfNeeded(originalCopy, config.interpolationMethod)
+                            val scaledCopy = if (interpolated != originalCopy) {
+                                interpolated
+                            } else {
+                                interpolated.copy(Bitmap.Config.ARGB_8888, false) ?: interpolated
+                            }
+                            scaledBitmap = scaledCopy
+
+                            // Use a separate display copy so SSIV recycling won't touch stored references
+                            val displayBitmap = scaledCopy.copy(Bitmap.Config.ARGB_8888, false) ?: scaledCopy
+                            setImage(ImageSource.bitmap(displayBitmap))
                             isVisible = true
                         },
                     )
@@ -324,8 +469,8 @@ open class ReaderPageImageView @JvmOverloads constructor(
                             onImageLoadError(result.throwable)
                         },
                     )
-                    .size(ViewSizeResolver(this@ReaderPageImageView))
-                    .precision(Precision.INEXACT)
+                    // Use Size.ORIGINAL to decode at full resolution for custom interpolation
+                    .size(coil3.size.Size.ORIGINAL)
                     .cropBorders(config.cropBorders)
                     .customDecoder(true)
                     .crossfade(false)
@@ -335,6 +480,115 @@ open class ReaderPageImageView @JvmOverloads constructor(
             else -> {
                 throw IllegalArgumentException("Not implemented for class ${data::class.simpleName}")
             }
+        }
+    }
+
+    /**
+     * Apply interpolation to bitmap if using non-default interpolation method.
+     * Uses OpenGL ES shaders for high-quality interpolation.
+     */
+    private fun applyInterpolationIfNeeded(bitmap: Bitmap, interpolationMethod: Int): Bitmap {
+        // Skip for default linear (method 2) - let SubsamplingScaleImageView handle it
+        if (interpolationMethod == 2) return bitmap
+
+        val currentConfig = config ?: return bitmap
+
+        // Get view dimensions
+        val viewWidth = width
+        val viewHeight = height
+
+        // Only apply if view is measured
+        if (viewWidth <= 0 || viewHeight <= 0) {
+            logcat(LogPriority.DEBUG) { "Skipping interpolation: view not measured" }
+            return bitmap
+        }
+
+        // Calculate scale based on minimumScaleType (same logic as SSIV)
+        // Scale types: 1=FitScreen, 2=Stretch, 3=FitWidth, 4=FitHeight, 5=Original, 6=SmartFit
+        val scaleType = currentConfig.minimumScaleType
+        val scale = when (scaleType) {
+            SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE -> {
+                // Fit screen - scale to fit both dimensions
+                minOf(
+                    viewWidth.toFloat() / bitmap.width,
+                    viewHeight.toFloat() / bitmap.height,
+                )
+            }
+            SubsamplingScaleImageView.SCALE_TYPE_CENTER_CROP -> {
+                // Stretch/crop - scale to cover both dimensions
+                maxOf(
+                    viewWidth.toFloat() / bitmap.width,
+                    viewHeight.toFloat() / bitmap.height,
+                )
+            }
+            SubsamplingScaleImageView.SCALE_TYPE_CUSTOM -> {
+                // Fit width
+                viewWidth.toFloat() / bitmap.width
+            }
+            4 -> {
+                // Fit height (SCALE_TYPE_START in SSIV, repurposed as fit height)
+                viewHeight.toFloat() / bitmap.height
+            }
+            5 -> {
+                // Original size - no scaling needed
+                1f
+            }
+            6 -> {
+                // Smart fit - fit width for tall images, fit height for wide images
+                if (bitmap.height > bitmap.width) {
+                    viewWidth.toFloat() / bitmap.width
+                } else {
+                    viewHeight.toFloat() / bitmap.height
+                }
+            }
+            else -> {
+                // Default to fit screen
+                minOf(
+                    viewWidth.toFloat() / bitmap.width,
+                    viewHeight.toFloat() / bitmap.height,
+                )
+            }
+        }
+
+        val targetWidth = (bitmap.width * scale).roundToInt().coerceAtLeast(1)
+        val targetHeight = (bitmap.height * scale).roundToInt().coerceAtLeast(1)
+
+        // Skip if no size change
+        if (targetWidth == bitmap.width && targetHeight == bitmap.height) {
+            return bitmap
+        }
+
+        // Map preference value to interpolation method
+        // 1 = INTER_NEAREST, 2 = INTER_LINEAR, 3 = INTER_AREA, 4 = INTER_CUBIC, 5 = INTER_LANCZOS3, 6 = INTER_LANCZOS4
+        val method = when (interpolationMethod) {
+            1 -> BitmapScaler.InterpolationMethod.INTER_NEAREST
+            3 -> BitmapScaler.InterpolationMethod.INTER_AREA
+            4 -> BitmapScaler.InterpolationMethod.INTER_CUBIC
+            5 -> BitmapScaler.InterpolationMethod.INTER_LANCZOS3
+            6 -> BitmapScaler.InterpolationMethod.INTER_LANCZOS4
+            else -> return bitmap
+        }
+
+        logcat(LogPriority.INFO) {
+            "Applying initial ${method.name}: ${bitmap.width}x${bitmap.height} -> ${targetWidth}x$targetHeight"
+        }
+
+        return try {
+            // Convert hardware bitmap to software bitmap if needed
+            val sourceBitmap = if (bitmap.config == Bitmap.Config.HARDWARE) {
+                logcat(LogPriority.DEBUG) { "Converting hardware bitmap to ARGB_8888 for interpolation" }
+                bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: bitmap
+            } else {
+                bitmap
+            }
+
+            // Use OpenGL ES shader-based interpolation (highest quality)
+            GLInterpolator.scale(sourceBitmap, targetWidth, targetHeight, method)
+                ?: BitmapScaler.scale(sourceBitmap, targetWidth, targetHeight, method)
+        } catch (e: Exception) {
+            // If interpolation fails, return original bitmap
+            logcat(LogPriority.WARN) { "Failed to apply interpolation: ${e.message}" }
+            bitmap
         }
     }
 
@@ -414,6 +668,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     /**
      * All of the config except [zoomDuration] will only be used for non-animated image.
+     * interpolationMethod: 1=NEAREST, 2=LINEAR(default), 3=AREA, 4=CUBIC, 5=LANCZOS4
      */
     data class Config(
         val zoomDuration: Int,
@@ -421,6 +676,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         val cropBorders: Boolean = false,
         val zoomStartPosition: ZoomStartPosition = ZoomStartPosition.CENTER,
         val landscapeZoom: Boolean = false,
+        val interpolationMethod: Int = 2,
     )
 
     enum class ZoomStartPosition {

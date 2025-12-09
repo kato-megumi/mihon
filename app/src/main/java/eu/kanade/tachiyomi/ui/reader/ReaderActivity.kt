@@ -321,11 +321,32 @@ class ReaderActivity : BaseActivity() {
                 )
             }
             is ReaderViewModel.Dialog.PageActions -> {
+                val pageActionsDialog = state.dialog as ReaderViewModel.Dialog.PageActions
+                val page = pageActionsDialog.page
+                val viewer = state.viewer
+                val hasScaledImage = viewer?.hasScaledImage(page) ?: false
+                val isShowingScaled = viewer?.isShowingScaledImage(page) ?: true
                 ReaderPageActionsDialog(
                     onDismissRequest = onDismissRequest,
                     onSetAsCover = viewModel::setAsCover,
                     onShare = viewModel::shareImage,
                     onSave = viewModel::saveImage,
+                    onSaveScaled = if (hasScaledImage) {
+                        {
+                            viewer?.getScaledBitmap(page)?.let { bitmap ->
+                                viewModel.saveScaledImage(bitmap)
+                            }
+                        }
+                    } else {
+                        null
+                    },
+                    onToggleScaled = if (hasScaledImage) {
+                        viewModel::toggleInterpolation
+                    } else {
+                        null
+                    },
+                    isShowingScaled = isShowingScaled,
+                    hasScaledImage = hasScaledImage,
                 )
             }
             null -> {}

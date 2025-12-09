@@ -83,6 +83,17 @@ private fun ColumnScope.PagerViewerSettings(screenModel: ReaderSettingsScreenMod
         }
     }
 
+    val imageInterpolation by screenModel.preferences.imageInterpolation().collectAsState()
+    SettingsChipRow(MR.strings.pref_image_interpolation) {
+        ReaderPreferences.ImageInterpolation.mapIndexed { index, it ->
+            FilterChip(
+                selected = imageInterpolation == index + 1,
+                onClick = { screenModel.preferences.imageInterpolation().set(index + 1) },
+                label = { Text(stringResource(it)) },
+            )
+        }
+    }
+
     val zoomStart by screenModel.preferences.zoomStart().collectAsState()
     SettingsChipRow(MR.strings.pref_zoom_start) {
         ReaderPreferences.ZoomStart.mapIndexed { index, it ->

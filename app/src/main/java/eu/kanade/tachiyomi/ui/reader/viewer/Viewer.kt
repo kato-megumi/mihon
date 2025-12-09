@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.reader.viewer
 
+import android.graphics.Bitmap
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -42,4 +43,25 @@ interface Viewer {
      * return true if the event was handled, false otherwise.
      */
     fun handleGenericMotionEvent(event: MotionEvent): Boolean
+
+    /**
+     * Get the scaled bitmap for the given page, if available.
+     */
+    fun getScaledBitmap(page: ReaderPage): Bitmap? = null
+
+    /**
+     * Check if the page has a scaled image different from original.
+     */
+    fun hasScaledImage(page: ReaderPage): Boolean = false
+
+    /**
+     * Check if the page is currently showing the scaled image.
+     */
+    fun isShowingScaledImage(page: ReaderPage): Boolean = true
+
+    /**
+     * Toggle between scaled and original image for the given page.
+     * Returns true if now showing scaled, false if showing original.
+     */
+    fun toggleScaledOriginal(page: ReaderPage): Boolean = true
 }
