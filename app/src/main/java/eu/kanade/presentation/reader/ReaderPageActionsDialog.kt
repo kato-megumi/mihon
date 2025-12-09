@@ -1,9 +1,11 @@
 package eu.kanade.presentation.reader
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Compare
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material.icons.outlined.Save
@@ -31,47 +33,90 @@ fun ReaderPageActionsDialog(
     onSetAsCover: () -> Unit,
     onShare: (Boolean) -> Unit,
     onSave: () -> Unit,
+    onSaveScaled: (() -> Unit)? = null,
+    onToggleScaled: (() -> Boolean)? = null,
+    isShowingScaled: Boolean = true,
+    hasScaledImage: Boolean = false,
 ) {
+    var showingScaled by remember { mutableStateOf(isShowingScaled) }
+
     var showSetCoverDialog by remember { mutableStateOf(false) }
 
     AdaptiveSheet(onDismissRequest = onDismissRequest) {
-        Row(
+        Column(
             modifier = Modifier.padding(vertical = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            ActionButton(
-                modifier = Modifier.weight(1f),
-                title = stringResource(MR.strings.set_as_cover),
-                icon = Icons.Outlined.Photo,
-                onClick = { showSetCoverDialog = true },
-            )
-            ActionButton(
-                modifier = Modifier.weight(1f),
-                title = stringResource(MR.strings.action_copy_to_clipboard),
-                icon = Icons.Outlined.ContentCopy,
-                onClick = {
-                    onShare(true)
-                    onDismissRequest()
-                },
-            )
-            ActionButton(
-                modifier = Modifier.weight(1f),
-                title = stringResource(MR.strings.action_share),
-                icon = Icons.Outlined.Share,
-                onClick = {
-                    onShare(false)
-                    onDismissRequest()
-                },
-            )
-            ActionButton(
-                modifier = Modifier.weight(1f),
-                title = stringResource(MR.strings.action_save),
-                icon = Icons.Outlined.Save,
-                onClick = {
-                    onSave()
-                    onDismissRequest()
-                },
-            )
+            // First row - standard actions
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+            ) {
+                ActionButton(
+                    modifier = Modifier.weight(1f),
+                    title = stringResource(MR.strings.set_as_cover),
+                    icon = Icons.Outlined.Photo,
+                    onClick = { showSetCoverDialog = true },
+                )
+                ActionButton(
+                    modifier = Modifier.weight(1f),
+                    title = stringResource(MR.strings.action_copy_to_clipboard),
+                    icon = Icons.Outlined.ContentCopy,
+                    onClick = {
+                        onShare(true)
+                        onDismissRequest()
+                    },
+                )
+                ActionButton(
+                    modifier = Modifier.weight(1f),
+                    title = stringResource(MR.strings.action_share),
+                    icon = Icons.Outlined.Share,
+                    onClick = {
+                        onShare(false)
+                        onDismissRequest()
+                    },
+                )
+                ActionButton(
+                    modifier = Modifier.weight(1f),
+                    title = stringResource(MR.strings.action_save),
+                    icon = Icons.Outlined.Save,
+                    onClick = {
+                        onSave()
+                        onDismissRequest()
+                    },
+                )
+            }
+
+            // Second row - scaled image actions (only if interpolation was applied)
+            if (hasScaledImage && (onSaveScaled != null || onToggleScaled != null)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+                ) {
+                    if (onToggleScaled != null) {
+                        ActionButton(
+                            modifier = Modifier.weight(1f),
+                            title = stringResource(
+                                if (showingScaled) MR.strings.action_view_original else MR.strings.action_view_scaled,
+                            ),
+                            icon = Icons.Outlined.Compare,
+                            onClick = {
+                                val result = onToggleScaled()
+                                showingScaled = result
+                            },
+                        )
+                    }
+                    if (onSaveScaled != null) {
+                        ActionButton(
+                            modifier = Modifier.weight(1f),
+                            title = stringResource(MR.strings.action_save_scaled),
+                            icon = Icons.Outlined.Save,
+                            onClick = {
+                                onSaveScaled()
+                                onDismissRequest()
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
 

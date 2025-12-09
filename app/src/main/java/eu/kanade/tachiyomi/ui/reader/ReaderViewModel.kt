@@ -843,6 +843,57 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     /**
+     * Saves the scaled/interpolated image of the selected page.
+     * The bitmap is obtained from the viewer and saved to the pictures directory.
+     */
+    fun saveScaledImage(bitmap: android.graphics.Bitmap) {
+        val page = (state.value.dialog as? Dialog.PageActions)?.page
+        if (page == null) return
+        val manga = manga ?: return
+
+        val context = Injekt.get<Application>()
+        val notifier = SaveImageNotifier(context)
+        notifier.onClear()
+
+        val filename = generateFilename(manga, page) + "_scaled"
+
+        // Pictures directory.
+        val relativePath = if (readerPreferences.folderPerManga().get()) {
+            DiskUtil.buildValidFilename(manga.title)
+        } else {
+            ""
+        }
+
+        // Save bitmap in background.
+        viewModelScope.launchNonCancellable {
+            try {
+                val uri = imageSaver.save(
+                    image = Image.Cover(
+                        bitmap = bitmap,
+                        name = filename,
+                        location = Location.Pictures.create(relativePath),
+                    ),
+                )
+                withUIContext {
+                    notifier.onComplete(uri)
+                    eventChannel.send(Event.SavedImage(SaveImageResult.Success(uri)))
+                }
+            } catch (e: Throwable) {
+                notifier.onError(e.message)
+                eventChannel.send(Event.SavedImage(SaveImageResult.Error(e)))
+            }
+        }
+    }
+
+    /**
+     * Toggles between showing the scaled/interpolated image and the original image.
+     */
+    fun toggleInterpolation(): Boolean {
+        val page = (state.value.dialog as? Dialog.PageActions)?.page ?: return true
+        return state.value.viewer?.toggleScaledOriginal(page) ?: true
+    }
+
+    /**
      * Shares the image of the selected page and notifies the UI with the path of the file to share.
      * The image must be first copied to the internal partition because there are many possible
      * formats it can come from, like a zipped chapter, in which case it's not possible to directly
