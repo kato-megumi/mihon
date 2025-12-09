@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
+import android.graphics.Bitmap
 import android.graphics.PointF
 import android.view.InputDevice
 import android.view.KeyEvent
@@ -451,5 +452,21 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
 
     private fun cleanupPageSplit() {
         adapter.cleanupPageSplit()
+    }
+
+    override fun getScaledBitmap(page: ReaderPage): Bitmap? {
+        return getPageHolder(page)?.getScaledBitmap()
+    }
+
+    override fun hasScaledImage(page: ReaderPage): Boolean {
+        return getPageHolder(page)?.hasScaledImage() ?: false
+    }
+
+    override fun isShowingScaledImage(page: ReaderPage): Boolean {
+        return getPageHolder(page)?.isShowingScaledImage() ?: true
+    }
+
+    override fun toggleScaledOriginal(page: ReaderPage): Boolean {
+        return getPageHolder(page)?.toggleScaledOriginal() ?: true
     }
 }
