@@ -421,7 +421,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
             }
             is BufferedSource -> {
                 // Use SSIV with hardware bitmap for default linear interpolation in paged mode
-                if ((!isWebtoon || alwaysDecodeLongStripWithSSIV) && config.interpolationMethod == 2) {
+                if ((!isWebtoon || alwaysDecodeLongStripWithSSIV) && config.interpolationMethod == 1) {
                     setHardwareConfig(ImageUtil.canUseHardwareBitmap(data))
                     setImage(ImageSource.inputStream(data.inputStream()))
                     isVisible = true
@@ -488,8 +488,8 @@ open class ReaderPageImageView @JvmOverloads constructor(
      * Uses OpenGL ES shaders for high-quality interpolation.
      */
     private fun applyInterpolationIfNeeded(bitmap: Bitmap, interpolationMethod: Int): Bitmap {
-        // Skip for default linear (method 2) - let SubsamplingScaleImageView handle it
-        if (interpolationMethod == 2) return bitmap
+        // Skip for default linear (method 1) - let SubsamplingScaleImageView handle it
+        if (interpolationMethod == 1) return bitmap
 
         val currentConfig = config ?: return bitmap
 
@@ -559,13 +559,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
         }
 
         // Map preference value to interpolation method
-        // 1 = INTER_NEAREST, 2 = INTER_LINEAR, 3 = INTER_AREA, 4 = INTER_CUBIC, 5 = INTER_LANCZOS3, 6 = INTER_LANCZOS4
+        // 1 = INTER_LINEAR (handled above), 2 = INTER_AREA, 3 = INTER_CUBIC, 4 = INTER_LANCZOS3
         val method = when (interpolationMethod) {
-            1 -> BitmapScaler.InterpolationMethod.INTER_NEAREST
-            3 -> BitmapScaler.InterpolationMethod.INTER_AREA
-            4 -> BitmapScaler.InterpolationMethod.INTER_CUBIC
-            5 -> BitmapScaler.InterpolationMethod.INTER_LANCZOS3
-            6 -> BitmapScaler.InterpolationMethod.INTER_LANCZOS4
+            2 -> BitmapScaler.InterpolationMethod.INTER_AREA
+            3 -> BitmapScaler.InterpolationMethod.INTER_CUBIC
+            4 -> BitmapScaler.InterpolationMethod.INTER_LANCZOS3
             else -> return bitmap
         }
 
