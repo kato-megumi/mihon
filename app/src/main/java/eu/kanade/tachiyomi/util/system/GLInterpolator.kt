@@ -1,9 +1,12 @@
 package eu.kanade.tachiyomi.util.system
 
+import android.content.res.Resources
 import android.graphics.Bitmap
 import android.opengl.GLES20
 import android.opengl.GLUtils
 import android.util.Log
+import androidx.annotation.RawRes
+import eu.kanade.tachiyomi.R
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -21,262 +24,15 @@ object GLInterpolator {
 
     private const val TAG = "GLInterpolator"
 
-    // Vertex shader - simple pass-through
-    private const val VERTEX_SHADER = """
-        attribute vec4 aPosition;
-        attribute vec2 aTexCoord;
-        varying vec2 vTexCoord;
-        void main() {
-            gl_Position = aPosition;
-            vTexCoord = aTexCoord;
-        }
-    """
-
-    // Fragment shader for Nearest Neighbor
-    private const val NEAREST_SHADER = """
-        precision highp float;
-        uniform sampler2D uTexture;
-        varying vec2 vTexCoord;
-        void main() {
-            gl_FragColor = texture2D(uTexture, vTexCoord);
-        }
-    """
-
-    // Fragment shader for Bilinear (OpenGL default, but explicit)
-    private const val BILINEAR_SHADER = """
-        precision highp float;
-        uniform sampler2D uTexture;
-        varying vec2 vTexCoord;
-        void main() {
-            gl_FragColor = texture2D(uTexture, vTexCoord);
-        }
-    """
-
-    // Fragment shader for Lanczos3 interpolation
-    private const val LANCZOS3_SHADER = """
-        precision highp float;
-        uniform sampler2D uTexture;
-        uniform vec2 uTextureSize;
-        uniform vec2 uOutputSize;
-        varying vec2 vTexCoord;
-
-        const float PI = 3.14159265358979323846;
-        const float a = 3.0; // Lanczos kernel size
-
-        float sinc(float x) {
-            if (abs(x) < 0.0001) return 1.0;
-            float pix = PI * x;
-            return sin(pix) / pix;
-        }
-
-        float lanczos(float x) {
-            if (abs(x) >= a) return 0.0;
-            return sinc(x) * sinc(x / a);
-        }
-
-        void main() {
-            vec2 texelSize = 1.0 / uTextureSize;
-            vec2 scale = uTextureSize / uOutputSize;
-
-            // Source position in texture coordinates
-            vec2 srcPos = vTexCoord * uTextureSize - 0.5;
-            vec2 srcPosFloor = floor(srcPos);
-            vec2 f = srcPos - srcPosFloor;
-
-            vec4 color = vec4(0.0);
-            float weightSum = 0.0;
-
-            // Sample 6x6 neighborhood for Lanczos3
-            for (int y = -2; y <= 3; y++) {
-                for (int x = -2; x <= 3; x++) {
-                    vec2 samplePos = srcPosFloor + vec2(float(x), float(y));
-                    vec2 sampleCoord = (samplePos + 0.5) / uTextureSize;
-
-                    // Clamp to texture bounds
-                    sampleCoord = clamp(sampleCoord, vec2(0.0), vec2(1.0));
-
-                    float wx = lanczos(float(x) - f.x);
-                    float wy = lanczos(float(y) - f.y);
-                    float weight = wx * wy;
-
-                    color += texture2D(uTexture, sampleCoord) * weight;
-                    weightSum += weight;
-                }
-            }
-
-            if (weightSum > 0.0) {
-                color /= weightSum;
-            }
-
-            // Clamp to valid range (Lanczos can produce values outside 0-1)
-            gl_FragColor = clamp(color, 0.0, 1.0);
-        }
-    """
-
-    // Fragment shader for Lanczos4 interpolation (8x8 kernel)
-    private const val LANCZOS4_SHADER = """
-        precision highp float;
-        uniform sampler2D uTexture;
-        uniform vec2 uTextureSize;
-        uniform vec2 uOutputSize;
-        varying vec2 vTexCoord;
-
-        const float PI = 3.14159265358979323846;
-        const float a = 4.0; // Lanczos kernel size
-
-        float sinc(float x) {
-            if (abs(x) < 0.0001) return 1.0;
-            float pix = PI * x;
-            return sin(pix) / pix;
-        }
-
-        float lanczos(float x) {
-            if (abs(x) >= a) return 0.0;
-            return sinc(x) * sinc(x / a);
-        }
-
-        void main() {
-            vec2 texelSize = 1.0 / uTextureSize;
-            vec2 scale = uTextureSize / uOutputSize;
-
-            // Source position in texture coordinates
-            vec2 srcPos = vTexCoord * uTextureSize - 0.5;
-            vec2 srcPosFloor = floor(srcPos);
-            vec2 f = srcPos - srcPosFloor;
-
-            vec4 color = vec4(0.0);
-            float weightSum = 0.0;
-
-            // Sample 8x8 neighborhood for Lanczos4
-            for (int y = -3; y <= 4; y++) {
-                for (int x = -3; x <= 4; x++) {
-                    vec2 samplePos = srcPosFloor + vec2(float(x), float(y));
-                    vec2 sampleCoord = (samplePos + 0.5) / uTextureSize;
-
-                    // Clamp to texture bounds
-                    sampleCoord = clamp(sampleCoord, vec2(0.0), vec2(1.0));
-
-                    float wx = lanczos(float(x) - f.x);
-                    float wy = lanczos(float(y) - f.y);
-                    float weight = wx * wy;
-
-                    color += texture2D(uTexture, sampleCoord) * weight;
-                    weightSum += weight;
-                }
-            }
-
-            if (weightSum > 0.0) {
-                color /= weightSum;
-            }
-
-            // Clamp to valid range (Lanczos can produce values outside 0-1)
-            gl_FragColor = clamp(color, 0.0, 1.0);
-        }
-    """
-
-    // Fragment shader for Bicubic (Mitchell-Netravali) interpolation
-    private const val BICUBIC_SHADER = """
-        precision highp float;
-        uniform sampler2D uTexture;
-        uniform vec2 uTextureSize;
-        uniform vec2 uOutputSize;
-        varying vec2 vTexCoord;
-
-        // Mitchell-Netravali coefficients (B=1/3, C=1/3)
-        const float B = 0.333333;
-        const float C = 0.333333;
-
-        float mitchell(float x) {
-            float ax = abs(x);
-            if (ax < 1.0) {
-                return ((12.0 - 9.0 * B - 6.0 * C) * ax * ax * ax +
-                        (-18.0 + 12.0 * B + 6.0 * C) * ax * ax +
-                        (6.0 - 2.0 * B)) / 6.0;
-            } else if (ax < 2.0) {
-                return ((-B - 6.0 * C) * ax * ax * ax +
-                        (6.0 * B + 30.0 * C) * ax * ax +
-                        (-12.0 * B - 48.0 * C) * ax +
-                        (8.0 * B + 24.0 * C)) / 6.0;
-            }
-            return 0.0;
-        }
-
-        void main() {
-            vec2 srcPos = vTexCoord * uTextureSize - 0.5;
-            vec2 srcPosFloor = floor(srcPos);
-            vec2 f = srcPos - srcPosFloor;
-
-            vec4 color = vec4(0.0);
-            float weightSum = 0.0;
-
-            // Sample 4x4 neighborhood
-            for (int y = -1; y <= 2; y++) {
-                for (int x = -1; x <= 2; x++) {
-                    vec2 samplePos = srcPosFloor + vec2(float(x), float(y));
-                    vec2 sampleCoord = (samplePos + 0.5) / uTextureSize;
-                    sampleCoord = clamp(sampleCoord, vec2(0.0), vec2(1.0));
-
-                    float wx = mitchell(float(x) - f.x);
-                    float wy = mitchell(float(y) - f.y);
-                    float weight = wx * wy;
-
-                    color += texture2D(uTexture, sampleCoord) * weight;
-                    weightSum += weight;
-                }
-            }
-
-            if (weightSum > 0.0) {
-                color /= weightSum;
-            }
-
-            gl_FragColor = clamp(color, 0.0, 1.0);
-        }
-    """
-
-    // Fragment shader for Area (box filter) - good for downscaling
-    private const val AREA_SHADER = """
-        precision highp float;
-        uniform sampler2D uTexture;
-        uniform vec2 uTextureSize;
-        uniform vec2 uOutputSize;
-        varying vec2 vTexCoord;
-
-        void main() {
-            vec2 scale = uTextureSize / uOutputSize;
-
-            // For downscaling, average over the source area
-            if (scale.x > 1.0 || scale.y > 1.0) {
-                vec2 srcStart = vTexCoord * uTextureSize - scale * 0.5;
-                vec2 srcEnd = srcStart + scale;
-
-                vec4 color = vec4(0.0);
-                float samples = 0.0;
-
-                // Adaptive sample count based on scale
-                int samplesX = int(ceil(scale.x));
-                int samplesY = int(ceil(scale.y));
-                if (samplesX > 8) samplesX = 8; // GLES2 lacks min for int
-                if (samplesY > 8) samplesY = 8;
-
-                for (int y = 0; y < 8; y++) {
-                    if (y >= samplesY) break;
-                    for (int x = 0; x < 8; x++) {
-                        if (x >= samplesX) break;
-                        vec2 offset = vec2(float(x) + 0.5, float(y) + 0.5) / vec2(float(samplesX), float(samplesY));
-                        vec2 sampleCoord = (srcStart + offset * scale) / uTextureSize;
-                        sampleCoord = clamp(sampleCoord, vec2(0.0), vec2(1.0));
-                        color += texture2D(uTexture, sampleCoord);
-                        samples += 1.0;
-                    }
-                }
-
-                gl_FragColor = color / samples;
-            } else {
-                // For upscaling, just use bilinear
-                gl_FragColor = texture2D(uTexture, vTexCoord);
-            }
-        }
-    """
+    private data class ShaderSources(
+        val vertex: String,
+        val nearest: String,
+        val bilinear: String,
+        val bicubic: String,
+        val lanczos3: String,
+        val lanczos4: String,
+        val area: String,
+    )
 
     // Quad vertices (full screen) with position (x,y) and texture coords (s,t)
     // Flip texture Y (v) so rendered FBO is upright before readback (we still flip buffer rows for Bitmap)
@@ -302,16 +58,20 @@ object GLInterpolator {
     private var lanczos4Program = 0
     private var areaProgram = 0
 
+    private var shaderSources: ShaderSources? = null
+
     private var vertexBuffer: FloatBuffer? = null
 
     /**
      * Initialize OpenGL ES context for off-screen rendering.
      */
     @Synchronized
-    fun initialize(): Boolean {
+    fun initialize(resources: Resources): Boolean {
         if (isInitialized) return true
 
         return try {
+            val sources = shaderSources ?: loadShaderSources(resources).also { shaderSources = it }
+
             // Get EGL instance
             egl = EGLContext.getEGL() as EGL10
 
@@ -377,12 +137,12 @@ object GLInterpolator {
             }
 
             // Compile shaders
-            nearestProgram = createProgram(VERTEX_SHADER, NEAREST_SHADER)
-            bilinearProgram = createProgram(VERTEX_SHADER, BILINEAR_SHADER)
-            bicubicProgram = createProgram(VERTEX_SHADER, BICUBIC_SHADER)
-            lanczos3Program = createProgram(VERTEX_SHADER, LANCZOS3_SHADER)
-            lanczos4Program = createProgram(VERTEX_SHADER, LANCZOS4_SHADER)
-            areaProgram = createProgram(VERTEX_SHADER, AREA_SHADER)
+            nearestProgram = createProgram(sources.vertex, sources.nearest)
+            bilinearProgram = createProgram(sources.vertex, sources.bilinear)
+            bicubicProgram = createProgram(sources.vertex, sources.bicubic)
+            lanczos3Program = createProgram(sources.vertex, sources.lanczos3)
+            lanczos4Program = createProgram(sources.vertex, sources.lanczos4)
+            areaProgram = createProgram(sources.vertex, sources.area)
 
             // Create vertex buffer
             vertexBuffer = ByteBuffer.allocateDirect(QUAD_VERTICES.size * 4)
@@ -442,6 +202,22 @@ object GLInterpolator {
         return shader
     }
 
+    private fun loadShaderSources(resources: Resources): ShaderSources {
+        return ShaderSources(
+            vertex = readRawText(resources, R.raw.gl_interpolator_vertex),
+            nearest = readRawText(resources, R.raw.gl_interpolator_nearest),
+            bilinear = readRawText(resources, R.raw.gl_interpolator_bilinear),
+            bicubic = readRawText(resources, R.raw.gl_interpolator_bicubic),
+            lanczos3 = readRawText(resources, R.raw.gl_interpolator_lanczos3),
+            lanczos4 = readRawText(resources, R.raw.gl_interpolator_lanczos4),
+            area = readRawText(resources, R.raw.gl_interpolator_area),
+        )
+    }
+
+    private fun readRawText(resources: Resources, @RawRes resId: Int): String {
+        return resources.openRawResource(resId).bufferedReader().use { it.readText() }
+    }
+
     /**
      * Scale bitmap using specified interpolation method.
      */
@@ -451,8 +227,9 @@ object GLInterpolator {
         targetWidth: Int,
         targetHeight: Int,
         method: BitmapScaler.InterpolationMethod,
+        resources: Resources,
     ): Bitmap? {
-        if (!isInitialized && !initialize()) {
+        if (!isInitialized && !initialize(resources)) {
             Log.e(TAG, "GLInterpolator not initialized")
             return null
         }
@@ -645,6 +422,14 @@ object GLInterpolator {
             if (lanczos3Program != 0) GLES20.glDeleteProgram(lanczos3Program)
             if (lanczos4Program != 0) GLES20.glDeleteProgram(lanczos4Program)
             if (areaProgram != 0) GLES20.glDeleteProgram(areaProgram)
+
+            nearestProgram = 0
+            bilinearProgram = 0
+            bicubicProgram = 0
+            lanczos3Program = 0
+            lanczos4Program = 0
+            areaProgram = 0
+            shaderSources = null
 
             egl?.eglMakeCurrent(eglDisplay, EGL10.EGL_NO_SURFACE, EGL10.EGL_NO_SURFACE, EGL10.EGL_NO_CONTEXT)
             egl?.eglDestroySurface(eglDisplay, eglSurface)

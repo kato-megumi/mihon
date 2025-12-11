@@ -583,7 +583,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
             }
 
             // Use OpenGL ES shader-based interpolation (highest quality)
-            GLInterpolator.scale(sourceBitmap, targetWidth, targetHeight, method)
+            GLInterpolator.scale(sourceBitmap, targetWidth, targetHeight, method, context.resources)
                 ?: BitmapScaler.scale(sourceBitmap, targetWidth, targetHeight, method)
         } catch (e: Exception) {
             // If interpolation fails, return original bitmap
