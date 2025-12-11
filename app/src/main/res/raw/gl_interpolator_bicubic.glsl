@@ -6,6 +6,8 @@ varying vec2 vTexCoord;
 
 const float B = 0.333333;
 const float C = 0.333333;
+const float BASE_SUPPORT = 2.0;
+const int MAX_RADIUS = 24;
 
 float mitchell(float x) {
     float ax = abs(x);
@@ -23,6 +25,11 @@ float mitchell(float x) {
 }
 
 void main() {
+    vec2 scale = uTextureSize / uOutputSize;
+    float scaleFactor = max(scale.x, scale.y);
+    int radiusX = int(clamp(ceil(BASE_SUPPORT * scale.x), 2.0, float(MAX_RADIUS)));
+    int radiusY = int(clamp(ceil(BASE_SUPPORT * scale.y), 2.0, float(MAX_RADIUS)));
+
     vec2 srcPos = vTexCoord * uTextureSize - 0.5;
     vec2 srcPosFloor = floor(srcPos);
     vec2 f = srcPos - srcPosFloor;
@@ -30,14 +37,17 @@ void main() {
     vec4 color = vec4(0.0);
     float weightSum = 0.0;
 
-    for (int y = -1; y <= 2; y++) {
-        for (int x = -1; x <= 2; x++) {
+    for (int y = -MAX_RADIUS; y <= MAX_RADIUS; y++) {
+        if (y < -radiusY || y >= radiusY + 1) continue;
+        for (int x = -MAX_RADIUS; x <= MAX_RADIUS; x++) {
+            if (x < -radiusX || x >= radiusX + 1) continue;
+
             vec2 samplePos = srcPosFloor + vec2(float(x), float(y));
             vec2 sampleCoord = (samplePos + 0.5) / uTextureSize;
             sampleCoord = clamp(sampleCoord, vec2(0.0), vec2(1.0));
 
-            float wx = mitchell(float(x) - f.x);
-            float wy = mitchell(float(y) - f.y);
+            float wx = mitchell((float(x) - f.x) / scale.x);
+            float wy = mitchell((float(y) - f.y) / scale.y);
             float weight = wx * wy;
 
             color += texture2D(uTexture, sampleCoord) * weight;
