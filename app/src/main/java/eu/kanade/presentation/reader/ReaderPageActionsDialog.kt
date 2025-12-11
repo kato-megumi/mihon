@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Compare
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material.icons.outlined.Save
@@ -34,12 +33,8 @@ fun ReaderPageActionsDialog(
     onShare: (Boolean) -> Unit,
     onSave: () -> Unit,
     onSaveScaled: (() -> Unit)? = null,
-    onToggleScaled: (() -> Boolean)? = null,
-    isShowingScaled: Boolean = true,
     hasScaledImage: Boolean = false,
 ) {
-    var showingScaled by remember { mutableStateOf(isShowingScaled) }
-
     var showSetCoverDialog by remember { mutableStateOf(false) }
 
     AdaptiveSheet(onDismissRequest = onDismissRequest) {
@@ -84,37 +79,16 @@ fun ReaderPageActionsDialog(
                         onDismissRequest()
                     },
                 )
-            }
-
-            // Second row - scaled image actions (only if interpolation was applied)
-            if (hasScaledImage && (onSaveScaled != null || onToggleScaled != null)) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
-                ) {
-                    if (onToggleScaled != null) {
-                        ActionButton(
-                            modifier = Modifier.weight(1f),
-                            title = stringResource(
-                                if (showingScaled) MR.strings.action_view_original else MR.strings.action_view_scaled,
-                            ),
-                            icon = Icons.Outlined.Compare,
-                            onClick = {
-                                val result = onToggleScaled()
-                                showingScaled = result
-                            },
-                        )
-                    }
-                    if (onSaveScaled != null) {
-                        ActionButton(
-                            modifier = Modifier.weight(1f),
-                            title = stringResource(MR.strings.action_save_scaled),
-                            icon = Icons.Outlined.Save,
-                            onClick = {
-                                onSaveScaled()
-                                onDismissRequest()
-                            },
-                        )
-                    }
+                if (hasScaledImage && onSaveScaled != null) {
+                    ActionButton(
+                        modifier = Modifier.weight(1f),
+                        title = stringResource(MR.strings.action_save_scaled),
+                        icon = Icons.Outlined.Save,
+                        onClick = {
+                            onSaveScaled()
+                            onDismissRequest()
+                        },
+                    )
                 }
             }
         }
