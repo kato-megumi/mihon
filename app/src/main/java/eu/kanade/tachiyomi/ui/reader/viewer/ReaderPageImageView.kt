@@ -76,6 +76,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
     private var originalBitmap: Bitmap? = null
     private var scaledBitmap: Bitmap? = null
     private var isShowingScaled: Boolean = true
+    private var lastScaleRatio: Float? = null
+    private var scaleToggleRunnable: Runnable? = null
+    private var isTogglingImage: Boolean = false
 
     var onImageLoaded: (() -> Unit)? = null
     var onImageLoadError: ((Throwable?) -> Unit)? = null
@@ -101,6 +104,37 @@ open class ReaderPageImageView @JvmOverloads constructor(
     @CallSuper
     open fun onScaleChanged(newScale: Float) {
         onScaleChanged?.invoke(newScale)
+        maybeScheduleToggleForZoom(newScale)
+    }
+
+    private fun maybeScheduleToggleForZoom(newScale: Float) {
+        val ssiv = pageView as? SubsamplingScaleImageView ?: return
+        if (!hasScaledImage()) return
+        if (isTogglingImage) return
+
+        val baseScale = ssiv.minScale.takeIf { it > 0F } ?: return
+        lastScaleRatio = newScale / baseScale
+
+        scaleToggleRunnable?.let { ssiv.handler?.removeCallbacks(it) }
+        val runnable = Runnable { applyZoomToggleDecision() }
+        scaleToggleRunnable = runnable
+        ssiv.handler?.postDelayed(runnable, ZOOM_TOGGLE_DEBOUNCE_MS)
+    }
+
+    private fun applyZoomToggleDecision() {
+        val ssiv = pageView as? SubsamplingScaleImageView ?: return
+        if (!hasScaledImage()) return
+
+        val zoomRatio = lastScaleRatio ?: return
+
+        if (!isShowingScaled && zoomRatio <= AUTO_TOGGLE_SCALED_RATIO) {
+            toggleScaledOriginal()
+            return
+        }
+
+        if (isShowingScaled && zoomRatio >= AUTO_TOGGLE_ORIGINAL_RATIO) {
+            toggleScaledOriginal()
+        }
     }
 
     @CallSuper
@@ -209,61 +243,74 @@ open class ReaderPageImageView @JvmOverloads constructor(
      */
     fun toggleScaledOriginal(): Boolean {
         val ssiv = pageView as? SubsamplingScaleImageView ?: return isShowingScaled
-        val original = originalBitmap ?: run {
-            android.util.Log.d("ReaderPageImageView", "originalBitmap is null")
-            return isShowingScaled
-        }
-        val scaled = scaledBitmap ?: run {
-            android.util.Log.d("ReaderPageImageView", "scaledBitmap is null")
+        val original = originalBitmap ?: return isShowingScaled
+        val scaled = scaledBitmap ?: return isShowingScaled
+
+        if (original == scaled || original.isRecycled || scaled.isRecycled) {
             return isShowingScaled
         }
 
-        if (original == scaled) {
-            android.util.Log.d("ReaderPageImageView", "originalBitmap == scaledBitmap")
-            return isShowingScaled
-        }
+        // Capture state before toggle
+        val currentBitmap = if (isShowingScaled) scaled else original
+        val targetBitmap = if (isShowingScaled) original else scaled
 
-        // Check if bitmaps are still valid
-        if (original.isRecycled) {
-            android.util.Log.d("ReaderPageImageView", "originalBitmap is recycled")
-            return isShowingScaled
-        }
-        if (scaled.isRecycled) {
-            android.util.Log.d("ReaderPageImageView", "scaledBitmap is recycled")
-            return isShowingScaled
-        }
-
-        // Save current view state
+        // Get current scale ratio relative to minScale
         val currentScale = ssiv.scale
-        val currentCenter = ssiv.center
+        val currentMinScale = ssiv.minScale.takeIf { it > 0f } ?: 1f
+        val zoomRatio = currentScale / currentMinScale
+
+        // Get center as fraction of image dimensions
+        val center = ssiv.center
+        val centerFractionX = center?.let { it.x / currentBitmap.width.toFloat() } ?: 0.5f
+        val centerFractionY = center?.let { it.y / currentBitmap.height.toFloat() } ?: 0.5f
+
+        // Prevent auto-toggle during this toggle operation
+        isTogglingImage = true
+        scaleToggleRunnable?.let { ssiv.handler?.removeCallbacks(it) }
+        scaleToggleRunnable = null
 
         isShowingScaled = !isShowingScaled
-        val bitmapToShow = if (isShowingScaled) scaled else original
-        android.util.Log.d(
-            "ReaderPageImageView",
-            "Toggling to ${if (isShowingScaled) "scaled" else "original"} bitmap: ${bitmapToShow.width}x${bitmapToShow.height}",
-        )
+        val bitmapToShow = targetBitmap
 
         // Use a copy of the bitmap to prevent issues with SSIV recycling
         val bitmapCopy = bitmapToShow.copy(Bitmap.Config.ARGB_8888, false)
         if (bitmapCopy == null) {
-            android.util.Log.d("ReaderPageImageView", "bitmapCopy is null, reverting toggle")
-            return !isShowingScaled // Revert toggle
+            isShowingScaled = !isShowingScaled
+            isTogglingImage = false
+            return isShowingScaled
         }
 
-        ssiv.recycle()
-        ssiv.setImage(ImageSource.bitmap(bitmapCopy))
+        // Capture values for closure to prevent capture issues
+        val savedZoomRatio = zoomRatio
+        val savedCenterFractionX = centerFractionX
+        val savedCenterFractionY = centerFractionY
 
-        // Restore view state after image is ready
+        ssiv.recycle()
+
+        // Set listener BEFORE setImage, as bitmap loading is synchronous
         ssiv.setOnImageEventListener(object : SubsamplingScaleImageView.DefaultOnImageEventListener() {
             override fun onReady() {
-                android.util.Log.d("ReaderPageImageView", "Image ready, restoring scale/center")
-                if (currentCenter != null) {
-                    ssiv.setScaleAndCenter(currentScale, currentCenter)
-                }
+                // Use SSIV's actual source dimensions
+                val newWidth = ssiv.sWidth
+                val newHeight = ssiv.sHeight
+                val newMinScale = ssiv.minScale
+                val newMaxScale = ssiv.maxScale
+
+                // Restore center using normalized fractions
+                val restoredCenter = PointF(
+                    savedCenterFractionX * newWidth.toFloat(),
+                    savedCenterFractionY * newHeight.toFloat(),
+                )
+                // Restore scale using zoom ratio relative to new minScale
+                val restoredScale = (newMinScale * savedZoomRatio).coerceIn(newMinScale, newMaxScale)
+
+                ssiv.setScaleAndCenter(restoredScale, restoredCenter)
+                isTogglingImage = false
                 ssiv.setOnImageEventListener(null)
             }
         })
+
+        ssiv.setImage(ImageSource.bitmap(bitmapCopy))
 
         return isShowingScaled
     }
@@ -685,3 +732,6 @@ open class ReaderPageImageView @JvmOverloads constructor(
 }
 
 private const val MAX_ZOOM_SCALE = 5F
+private const val AUTO_TOGGLE_ORIGINAL_RATIO = 1.08F
+private const val AUTO_TOGGLE_SCALED_RATIO = 1.02F
+private const val ZOOM_TOGGLE_DEBOUNCE_MS = 175L

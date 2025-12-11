@@ -886,14 +886,6 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     /**
-     * Toggles between showing the scaled/interpolated image and the original image.
-     */
-    fun toggleInterpolation(): Boolean {
-        val page = (state.value.dialog as? Dialog.PageActions)?.page ?: return true
-        return state.value.viewer?.toggleScaledOriginal(page) ?: true
-    }
-
-    /**
      * Shares the image of the selected page and notifies the UI with the path of the file to share.
      * The image must be first copied to the internal partition because there are many possible
      * formats it can come from, like a zipped chapter, in which case it's not possible to directly
