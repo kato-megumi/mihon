@@ -203,7 +203,7 @@ class WebtoonPageHolder(
                         zoomDuration = viewer.config.doubleTapAnimDuration,
                         minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_FIT_WIDTH,
                         cropBorders = viewer.config.imageCropBorders,
-                        interpolationMethod = viewer.config.imageInterpolation,
+                        interpolationMethod = viewer.activity.viewModel.getMangaImageInterpolation(),
                     ),
                 )
                 removeErrorLayout()

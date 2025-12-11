@@ -170,7 +170,7 @@ class PagerPageHolder(
                         cropBorders = viewer.config.imageCropBorders,
                         zoomStartPosition = viewer.config.imageZoomType,
                         landscapeZoom = viewer.config.landscapeZoom,
-                        interpolationMethod = viewer.config.imageInterpolation,
+                        interpolationMethod = viewer.activity.viewModel.getMangaImageInterpolation(),
                     ),
                 )
                 if (!isAnimated) {
