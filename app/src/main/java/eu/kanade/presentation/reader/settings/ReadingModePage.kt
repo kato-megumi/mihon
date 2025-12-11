@@ -8,8 +8,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import eu.kanade.domain.manga.model.imageInterpolation
 import eu.kanade.domain.manga.model.readerOrientation
 import eu.kanade.domain.manga.model.readingMode
+import eu.kanade.tachiyomi.ui.reader.setting.ImageInterpolation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
@@ -51,6 +53,17 @@ internal fun ColumnScope.ReadingModePage(screenModel: ReaderSettingsScreenModel)
         }
     }
 
+    val interpolation = remember(manga) { ImageInterpolation.fromPreference(manga?.imageInterpolation?.toInt()) }
+    SettingsChipRow(MR.strings.pref_image_interpolation) {
+        ImageInterpolation.entries.map {
+            FilterChip(
+                selected = it == interpolation,
+                onClick = { screenModel.onChangeImageInterpolation(it) },
+                label = { Text(stringResource(it.stringRes)) },
+            )
+        }
+    }
+
     val viewer by screenModel.viewerFlow.collectAsState()
     if (viewer is WebtoonViewer) {
         WebtoonViewerSettings(screenModel)
@@ -78,17 +91,6 @@ private fun ColumnScope.PagerViewerSettings(screenModel: ReaderSettingsScreenMod
             FilterChip(
                 selected = imageScaleType == index + 1,
                 onClick = { screenModel.preferences.imageScaleType().set(index + 1) },
-                label = { Text(stringResource(it)) },
-            )
-        }
-    }
-
-    val imageInterpolation by screenModel.preferences.imageInterpolation().collectAsState()
-    SettingsChipRow(MR.strings.pref_image_interpolation) {
-        ReaderPreferences.ImageInterpolation.mapIndexed { index, it ->
-            FilterChip(
-                selected = imageInterpolation == index + 1,
-                onClick = { screenModel.preferences.imageInterpolation().set(index + 1) },
                 label = { Text(stringResource(it)) },
             )
         }
