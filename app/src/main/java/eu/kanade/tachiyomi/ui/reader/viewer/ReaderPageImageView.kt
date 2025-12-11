@@ -485,10 +485,6 @@ open class ReaderPageImageView @JvmOverloads constructor(
                         onSuccess = { result ->
                             val image = result as BitmapImage
 
-                            logcat(LogPriority.DEBUG) {
-                                "Loaded original bitmap: ${image.bitmap.width}x${image.bitmap.height}"
-                            }
-
                             // Always copy to keep stored copy independent from the one SSIV may recycle
                             val originalCopy = if (image.bitmap.config == Bitmap.Config.HARDWARE) {
                                 image.bitmap.copy(Bitmap.Config.ARGB_8888, false)
@@ -546,7 +542,6 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
         // Only apply if view is measured
         if (viewWidth <= 0 || viewHeight <= 0) {
-            logcat(LogPriority.DEBUG) { "Skipping interpolation: view not measured" }
             return bitmap
         }
 
@@ -614,14 +609,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
             else -> return bitmap
         }
 
-        logcat(LogPriority.INFO) {
-            "Applying initial ${method.name}: ${bitmap.width}x${bitmap.height} -> ${targetWidth}x$targetHeight"
-        }
-
         return try {
             // Convert hardware bitmap to software bitmap if needed
             val sourceBitmap = if (bitmap.config == Bitmap.Config.HARDWARE) {
-                logcat(LogPriority.DEBUG) { "Converting hardware bitmap to ARGB_8888 for interpolation" }
                 bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: bitmap
             } else {
                 bitmap
