@@ -3,6 +3,7 @@
 Usage examples:
     python tools/test_shader.py --in input.png --out out.png --method lanczos3 --scale 2.0
     python tools/test_shader.py --in input.png --out out.png --method area --width 800 --height 600
+    python tools/test_shader.py --make-sample sample.png --out out.png --method bilinear --scale 1.5 --compare
 
 Requires:
     pip install moderngl Pillow numpy
@@ -17,234 +18,23 @@ import moderngl
 import numpy as np
 from PIL import Image
 
-# Vertex shader (pass-through)
-VERTEX_SHADER = """
-#version 100
-attribute vec4 aPosition;
-attribute vec2 aTexCoord;
-varying vec2 vTexCoord;
-void main() {
-    gl_Position = aPosition;
-    vTexCoord = aTexCoord;
-}
-"""
+ROOT = Path(__file__).resolve().parents[1]
+SHADER_DIR = ROOT / "app" / "src" / "main" / "res" / "raw"
 
-NEAREST_SHADER = """
-#version 100
-precision highp float;
-uniform sampler2D uTexture;
-varying vec2 vTexCoord;
-void main() {
-    gl_FragColor = texture2D(uTexture, vTexCoord);
-}
-"""
+def load_glsl(filename: str) -> str:
+    path = SHADER_DIR / filename
+    if not path.exists():
+        raise FileNotFoundError(f"Shader not found: {path}")
+    return "#version 100\n" + path.read_text(encoding="utf-8")
 
-BILINEAR_SHADER = NEAREST_SHADER
 
-LANCZOS3_SHADER = """
-#version 100
-precision highp float;
-uniform sampler2D uTexture;
-uniform vec2 uTextureSize;
-uniform vec2 uOutputSize;
-varying vec2 vTexCoord;
-
-const float PI = 3.14159265358979323846;
-const float a = 3.0;
-
-float sinc(float x) {
-    if (abs(x) < 0.0001) return 1.0;
-    float pix = PI * x;
-    return sin(pix) / pix;
-}
-
-float lanczos(float x) {
-    if (abs(x) >= a) return 0.0;
-    return sinc(x) * sinc(x / a);
-}
-
-void main() {
-    vec2 srcPos = vTexCoord * uTextureSize - 0.5;
-    vec2 srcPosFloor = floor(srcPos);
-    vec2 f = srcPos - srcPosFloor;
-
-    vec4 color = vec4(0.0);
-    float weightSum = 0.0;
-
-    for (int y = -2; y <= 3; y++) {
-        for (int x = -2; x <= 3; x++) {
-            vec2 samplePos = srcPosFloor + vec2(float(x), float(y));
-            vec2 sampleCoord = (samplePos + 0.5) / uTextureSize;
-            sampleCoord = clamp(sampleCoord, vec2(0.0), vec2(1.0));
-
-            float wx = lanczos(float(x) - f.x);
-            float wy = lanczos(float(y) - f.y);
-            float weight = wx * wy;
-
-            color += texture2D(uTexture, sampleCoord) * weight;
-            weightSum += weight;
-        }
-    }
-
-    if (weightSum > 0.0) {
-        color /= weightSum;
-    }
-
-    gl_FragColor = clamp(color, 0.0, 1.0);
-}
-"""
-
-LANCZOS4_SHADER = """
-#version 100
-precision highp float;
-uniform sampler2D uTexture;
-uniform vec2 uTextureSize;
-uniform vec2 uOutputSize;
-varying vec2 vTexCoord;
-
-const float PI = 3.14159265358979323846;
-const float a = 4.0;
-
-float sinc(float x) {
-    if (abs(x) < 0.0001) return 1.0;
-    float pix = PI * x;
-    return sin(pix) / pix;
-}
-
-float lanczos(float x) {
-    if (abs(x) >= a) return 0.0;
-    return sinc(x) * sinc(x / a);
-}
-
-void main() {
-    vec2 srcPos = vTexCoord * uTextureSize - 0.5;
-    vec2 srcPosFloor = floor(srcPos);
-    vec2 f = srcPos - srcPosFloor;
-
-    vec4 color = vec4(0.0);
-    float weightSum = 0.0;
-
-    for (int y = -3; y <= 4; y++) {
-        for (int x = -3; x <= 4; x++) {
-            vec2 samplePos = srcPosFloor + vec2(float(x), float(y));
-            vec2 sampleCoord = (samplePos + 0.5) / uTextureSize;
-            sampleCoord = clamp(sampleCoord, vec2(0.0), vec2(1.0));
-
-            float wx = lanczos(float(x) - f.x);
-            float wy = lanczos(float(y) - f.y);
-            float weight = wx * wy;
-
-            color += texture2D(uTexture, sampleCoord) * weight;
-            weightSum += weight;
-        }
-    }
-
-    if (weightSum > 0.0) {
-        color /= weightSum;
-    }
-
-    gl_FragColor = clamp(color, 0.0, 1.0);
-}
-"""
-
-BICUBIC_SHADER = """
-#version 100
-precision highp float;
-uniform sampler2D uTexture;
-uniform vec2 uTextureSize;
-uniform vec2 uOutputSize;
-varying vec2 vTexCoord;
-
-const float B = 0.333333;
-const float C = 0.333333;
-
-float mitchell(float x) {
-    float ax = abs(x);
-    if (ax < 1.0) {
-        return ((12.0 - 9.0 * B - 6.0 * C) * ax * ax * ax +
-                (-18.0 + 12.0 * B + 6.0 * C) * ax * ax +
-                (6.0 - 2.0 * B)) / 6.0;
-    } else if (ax < 2.0) {
-        return ((-B - 6.0 * C) * ax * ax * ax +
-                (6.0 * B + 30.0 * C) * ax * ax +
-                (-12.0 * B - 48.0 * C) * ax +
-                (8.0 * B + 24.0 * C)) / 6.0;
-    }
-    return 0.0;
-}
-
-void main() {
-    vec2 srcPos = vTexCoord * uTextureSize - 0.5;
-    vec2 srcPosFloor = floor(srcPos);
-    vec2 f = srcPos - srcPosFloor;
-
-    vec4 color = vec4(0.0);
-    float weightSum = 0.0;
-
-    for (int y = -1; y <= 2; y++) {
-        for (int x = -1; x <= 2; x++) {
-            vec2 samplePos = srcPosFloor + vec2(float(x), float(y));
-            vec2 sampleCoord = (samplePos + 0.5) / uTextureSize;
-            sampleCoord = clamp(sampleCoord, vec2(0.0), vec2(1.0));
-
-            float wx = mitchell(float(x) - f.x);
-            float wy = mitchell(float(y) - f.y);
-            float weight = wx * wy;
-
-            color += texture2D(uTexture, sampleCoord) * weight;
-            weightSum += weight;
-        }
-    }
-
-    if (weightSum > 0.0) {
-        color /= weightSum;
-    }
-
-    gl_FragColor = clamp(color, 0.0, 1.0);
-}
-"""
-
-AREA_SHADER = """
-#version 100
-precision highp float;
-uniform sampler2D uTexture;
-uniform vec2 uTextureSize;
-uniform vec2 uOutputSize;
-varying vec2 vTexCoord;
-
-void main() {
-    vec2 scale = uTextureSize / uOutputSize;
-
-    if (scale.x > 1.0 || scale.y > 1.0) {
-        vec2 srcStart = vTexCoord * uTextureSize - scale * 0.5;
-        vec2 srcEnd = srcStart + scale;
-
-        vec4 color = vec4(0.0);
-        float samples = 0.0;
-
-        int samplesX = int(ceil(scale.x));
-        int samplesY = int(ceil(scale.y));
-        if (samplesX > 8) samplesX = 8;
-        if (samplesY > 8) samplesY = 8;
-
-        for (int y = 0; y < 8; y++) {
-            if (y >= samplesY) break;
-            for (int x = 0; x < 8; x++) {
-                if (x >= samplesX) break;
-                vec2 offset = vec2(float(x) + 0.5, float(y) + 0.5) / vec2(float(samplesX), float(samplesY));
-                vec2 sampleCoord = (srcStart + offset * scale) / uTextureSize;
-                sampleCoord = clamp(sampleCoord, vec2(0.0), vec2(1.0));
-                color += texture2D(uTexture, sampleCoord);
-                samples += 1.0;
-            }
-        }
-
-        gl_FragColor = color / samples;
-    } else {
-        gl_FragColor = texture2D(uTexture, vTexCoord);
-    }
-}
-"""
+VERTEX_SHADER = load_glsl("gl_interpolator_vertex.glsl")
+NEAREST_SHADER = load_glsl("gl_interpolator_nearest.glsl")
+BILINEAR_SHADER = load_glsl("gl_interpolator_bilinear.glsl")
+LANCZOS3_SHADER = load_glsl("gl_interpolator_lanczos3.glsl")
+LANCZOS4_SHADER = load_glsl("gl_interpolator_lanczos4.glsl")
+BICUBIC_SHADER = load_glsl("gl_interpolator_bicubic.glsl")
+AREA_SHADER = load_glsl("gl_interpolator_area.glsl")
 
 SHADERS: Dict[str, str] = {
     "nearest": NEAREST_SHADER,
@@ -255,29 +45,73 @@ SHADERS: Dict[str, str] = {
     "area": AREA_SHADER,
 }
 
+PIL_RESAMPLE = {
+    "nearest": Image.NEAREST,
+    "bilinear": Image.BILINEAR,
+    "lanczos3": Image.LANCZOS,
+    "lanczos4": Image.LANCZOS,
+    "bicubic": Image.BICUBIC,
+    "area": Image.BOX,
+}
 
-def compile_shader(ctx: moderngl.Context, frag_src: str) -> Tuple[bool, str]:
-    try:
-        prog = ctx.program(vertex_shader=VERTEX_SHADER, fragment_shader=frag_src)
-    except Exception as exc:  # moderngl.Error or generic
-        return False, str(exc)
-    return True, "OK"
+
+def make_sample(path: Path, size: Tuple[int, int] = (256, 256), pattern: str = "gradient") -> None:
+    w, h = size
+    arr = np.zeros((h, w, 4), dtype=np.uint8)
+    if pattern == "checker":
+        tiles = 8
+        tile_w = max(1, w // tiles)
+        tile_h = max(1, h // tiles)
+        for y in range(h):
+            for x in range(w):
+                is_dark = ((x // tile_w) + (y // tile_h)) % 2 == 0
+                val = 32 if is_dark else 224
+                arr[y, x, :3] = val
+        arr[:, :, 3] = 255
+    else:
+        y_grid, x_grid = np.meshgrid(np.linspace(0, 1, h), np.linspace(0, 1, w), indexing="ij")
+        arr[:, :, 0] = (x_grid * 255).astype(np.uint8)
+        arr[:, :, 1] = (y_grid * 255).astype(np.uint8)
+        arr[:, :, 2] = ((1 - x_grid) * 255).astype(np.uint8)
+        arr[:, :, 3] = 255
+    Image.fromarray(arr, mode="RGBA").save(path)
+
+
+def compare_and_save(out_img: Image.Image, pillow_img: Image.Image, diff_out: Path | None) -> Tuple[float, float, int]:
+    a = np.array(out_img, dtype=np.int16)
+    b = np.array(pillow_img, dtype=np.int16)
+    diff = np.abs(a - b)
+    mae = float(diff.mean())
+    mse = float((diff * diff).mean())
+    maxv = int(diff.max())
+    if diff_out:
+        Image.fromarray(np.clip(diff, 0, 255).astype(np.uint8), mode="RGBA").save(diff_out)
+    return mae, mse, maxv
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Test GL shaders and scale an image")
-    parser.add_argument("--in", dest="inp", required=True, help="Input image path")
+    parser.add_argument("--in", dest="inp", help="Input image path")
+    parser.add_argument("--make-sample", dest="make_sample", help="Generate a sample image to this path and use it as input")
+    parser.add_argument("--sample-pattern", choices=["gradient", "checker"], default="gradient", help="Pattern for generated sample")
     parser.add_argument("--out", dest="out", required=True, help="Output image path")
-    parser.add_argument(
-        "--method",
-        choices=list(SHADERS.keys()),
-        default="lanczos3",
-        help="Interpolation shader to use",
-    )
+    parser.add_argument("--method", choices=list(SHADERS.keys()), default="lanczos3", help="Interpolation shader to use")
     parser.add_argument("--scale", type=float, default=None, help="Uniform scale factor")
     parser.add_argument("--width", type=int, default=None, help="Target width (overrides scale)")
     parser.add_argument("--height", type=int, default=None, help="Target height (overrides scale)")
+    parser.add_argument("--compare", action="store_true", help="Also resize with Pillow and report metrics")
+    parser.add_argument("--pillow-out", dest="pillow_out", help="Where to save Pillow resize (default next to out)")
+    parser.add_argument("--diff-out", dest="diff_out", help="Optional diff image path (absolute per-channel diff)")
     args = parser.parse_args()
+
+    if not args.inp and not args.make_sample:
+        print("Either --in or --make-sample is required", file=sys.stderr)
+        return 1
+
+    if args.make_sample:
+        sample_path = Path(args.make_sample).expanduser()
+        make_sample(sample_path, pattern=args.sample_pattern)
+        args.inp = str(sample_path)
 
     inp_path = Path(args.inp).expanduser()
     out_path = Path(args.out).expanduser()
@@ -315,22 +149,10 @@ def main() -> int:
     vertices = np.array(
         [
             # x, y, s, t (triangle strip)
-            -1.0,
-            -1.0,
-            0.0,
-            1.0,
-            1.0,
-            -1.0,
-            1.0,
-            1.0,
-            -1.0,
-            1.0,
-            0.0,
-            0.0,
-            1.0,
-            1.0,
-            1.0,
-            0.0,
+            -1.0, -1.0, 0.0, 1.0,
+            1.0, -1.0, 1.0, 1.0,
+            -1.0, 1.0, 0.0, 0.0,
+            1.0, 1.0, 1.0, 0.0,
         ],
         dtype="f4",
     )
@@ -375,6 +197,18 @@ def main() -> int:
     out_img = Image.fromarray(arr, mode="RGBA")
     out_img.save(out_path)
     print(f"Wrote {out_path} using {args.method} ({src_w}x{src_h} -> {tgt_w}x{tgt_h})")
+
+    if args.compare:
+        pillow_resample = PIL_RESAMPLE[args.method]
+        pillow_img = img.resize((tgt_w, tgt_h), resample=pillow_resample)
+        pillow_out = Path(args.pillow_out or (str(out_path.with_stem(out_path.stem + "_pillow"))))
+        pillow_img.save(pillow_out)
+        diff_out_path = Path(args.diff_out).expanduser() if args.diff_out else None
+        mae, mse, maxv = compare_and_save(out_img, pillow_img, diff_out_path)
+        print(f"Compare -> Pillow saved: {pillow_out}; MAE={mae:.3f} MSE={mse:.3f} MAX={maxv}")
+        if diff_out_path:
+            print(f"Diff saved to {diff_out_path}")
+
     return 0
 
 
