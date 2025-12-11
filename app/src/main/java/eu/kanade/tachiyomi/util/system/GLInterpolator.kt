@@ -152,7 +152,6 @@ object GLInterpolator {
             vertexBuffer!!.position(0)
 
             isInitialized = true
-            Log.d(TAG, "GLInterpolator initialized successfully")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize GLInterpolator", e)
@@ -372,24 +371,16 @@ object GLInterpolator {
             val rowBuffer = ByteArray(rowSize)
             val flippedBuffer = ByteBuffer.allocateDirect(targetWidth * targetHeight * 4)
                 .order(ByteOrder.nativeOrder())
-            android.util.Log.d(
-                "GLInterpolator",
-                "Flipping buffer: width=$targetWidth height=$targetHeight rowSize=$rowSize",
-            )
             for (row in 0 until targetHeight) {
                 resultBuffer.position((targetHeight - 1 - row) * rowSize)
                 resultBuffer.get(rowBuffer)
                 flippedBuffer.put(rowBuffer)
-                if (row == 0 || row == targetHeight - 1) {
-                    android.util.Log.d("GLInterpolator", "Row $row first bytes: ${rowBuffer.take(8)}")
-                }
             }
             flippedBuffer.rewind()
 
             // Create result bitmap
             val resultBitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
             resultBitmap.copyPixelsFromBuffer(flippedBuffer)
-            android.util.Log.d("GLInterpolator", "Result bitmap created: ${resultBitmap.width}x${resultBitmap.height}")
 
             // Cleanup
             GLES20.glDisableVertexAttribArray(positionLoc)
@@ -437,7 +428,6 @@ object GLInterpolator {
             egl?.eglTerminate(eglDisplay)
 
             isInitialized = false
-            Log.d(TAG, "GLInterpolator released")
         } catch (e: Exception) {
             Log.e(TAG, "Error releasing GLInterpolator", e)
         }
