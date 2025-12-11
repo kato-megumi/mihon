@@ -325,7 +325,6 @@ class ReaderActivity : BaseActivity() {
                 val page = pageActionsDialog.page
                 val viewer = state.viewer
                 val hasScaledImage = viewer?.hasScaledImage(page) ?: false
-                val isShowingScaled = viewer?.isShowingScaledImage(page) ?: true
                 ReaderPageActionsDialog(
                     onDismissRequest = onDismissRequest,
                     onSetAsCover = viewModel::setAsCover,
@@ -340,12 +339,6 @@ class ReaderActivity : BaseActivity() {
                     } else {
                         null
                     },
-                    onToggleScaled = if (hasScaledImage) {
-                        viewModel::toggleInterpolation
-                    } else {
-                        null
-                    },
-                    isShowingScaled = isShowingScaled,
                     hasScaledImage = hasScaledImage,
                 )
             }
