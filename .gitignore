@@ -18,3 +18,4 @@ local.properties
 # Tools
 tools/.venv/
 tools/__pycache__/
+*.keystore
