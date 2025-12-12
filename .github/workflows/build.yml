@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -19,6 +19,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Get commit count
+        id: commit_count
+        run: echo "count=$(git rev-list --count HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Get version info
+        id: version_info
+        run: |
+          VERSION_NAME=$(grep "versionName = " app/build.gradle.kts | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "name=${VERSION_NAME}" >> $GITHUB_OUTPUT
 
       - name: Dependency Review
         if: github.event_name == 'pull_request'
@@ -72,3 +84,18 @@ jobs:
         with:
           name: mapping-${{ github.sha }}
           path: app/build/outputs/mapping/release
+
+      - name: Create Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        with:
+          tag_name: v${{ steps.version_info.outputs.name }}.${{ steps.commit_count.outputs.count }}
+          name: Release v${{ steps.version_info.outputs.name }}.${{ steps.commit_count.outputs.count }}
+          target_commitish: ${{ github.sha }}
+          draft: false
+          prerelease: false
+          files: |
+            app/build/outputs/apk/release/app-arm64-v8a-release-unsigned-signed.apk
+            app/build/outputs/apk/release/app-armeabi-v7a-release-unsigned-signed.apk
+            app/build/outputs/apk/release/app-x86-release-unsigned-signed.apk
+            app/build/outputs/apk/release/app-x86_64-release-unsigned-signed.apk
+            app/build/outputs/apk/release/app-universal-release-unsigned-signed.apk
