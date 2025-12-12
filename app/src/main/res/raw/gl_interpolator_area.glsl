@@ -8,6 +8,7 @@ void main() {
     vec2 scale = uTextureSize / uOutputSize;
 
     if (scale.x > 1.0 || scale.y > 1.0) {
+        // Downscaling: use box filter
         vec2 srcStart = vTexCoord * uTextureSize - scale * 0.5;
         vec2 srcEnd = srcStart + scale;
 
@@ -33,6 +34,7 @@ void main() {
 
         gl_FragColor = color / samples;
     } else {
+        // Upscaling: use bilinear interpolation (texture2D with LINEAR filter)
         gl_FragColor = texture2D(uTexture, vTexCoord);
     }
 }

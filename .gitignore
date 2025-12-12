@@ -19,3 +19,4 @@ local.properties
 tools/.venv/
 tools/__pycache__/
 *.keystore
+tools/*.png

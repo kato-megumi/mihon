@@ -55,7 +55,7 @@ PIL_RESAMPLE = {
 }
 
 
-def make_sample(path: Path, size: Tuple[int, int] = (256, 256), pattern: str = "gradient") -> None:
+def make_sample(path: Path | None, size: Tuple[int, int] = (256, 256), pattern: str = "gradient") -> Image.Image:
     w, h = size
     arr = np.zeros((h, w, 4), dtype=np.uint8)
     if pattern == "checker":
@@ -74,7 +74,10 @@ def make_sample(path: Path, size: Tuple[int, int] = (256, 256), pattern: str = "
         arr[:, :, 1] = (y_grid * 255).astype(np.uint8)
         arr[:, :, 2] = ((1 - x_grid) * 255).astype(np.uint8)
         arr[:, :, 3] = 255
-    Image.fromarray(arr, mode="RGBA").save(path)
+    img = Image.fromarray(arr, mode="RGBA")
+    if path:
+        img.save(path)
+    return img
 
 
 def compare_and_save(out_img: Image.Image, pillow_img: Image.Image, diff_out: Path | None) -> Tuple[float, float, int]:
@@ -92,9 +95,9 @@ def compare_and_save(out_img: Image.Image, pillow_img: Image.Image, diff_out: Pa
 def main() -> int:
     parser = argparse.ArgumentParser(description="Test GL shaders and scale an image")
     parser.add_argument("--in", dest="inp", help="Input image path")
-    parser.add_argument("--make-sample", dest="make_sample", help="Generate a sample image to this path and use it as input")
+    parser.add_argument("--make-sample", dest="make_sample", nargs="?", const="", help="Generate a sample image (optionally save to this path)")
     parser.add_argument("--sample-pattern", choices=["gradient", "checker"], default="gradient", help="Pattern for generated sample")
-    parser.add_argument("--out", dest="out", required=True, help="Output image path")
+    parser.add_argument("--out", dest="out", help="Output image path")
     parser.add_argument("--method", choices=list(SHADERS.keys()), default="lanczos3", help="Interpolation shader to use")
     parser.add_argument("--scale", type=float, default=None, help="Uniform scale factor")
     parser.add_argument("--width", type=int, default=None, help="Target width (overrides scale)")
@@ -104,23 +107,22 @@ def main() -> int:
     parser.add_argument("--diff-out", dest="diff_out", help="Optional diff image path (absolute per-channel diff)")
     args = parser.parse_args()
 
-    if not args.inp and not args.make_sample:
+    if not args.inp and args.make_sample is None:
         print("Either --in or --make-sample is required", file=sys.stderr)
         return 1
 
-    if args.make_sample:
-        sample_path = Path(args.make_sample).expanduser()
-        make_sample(sample_path, pattern=args.sample_pattern)
-        args.inp = str(sample_path)
+    out_path = Path(args.out).expanduser() if args.out else None
 
-    inp_path = Path(args.inp).expanduser()
-    out_path = Path(args.out).expanduser()
-    if not inp_path.exists():
-        print(f"Input not found: {inp_path}", file=sys.stderr)
-        return 1
-
-    # Load image
-    img = Image.open(inp_path).convert("RGBA")
+    # Load or generate image
+    if args.make_sample is not None:
+        sample_path = Path(args.make_sample).expanduser() if args.make_sample else None
+        img = make_sample(sample_path, pattern=args.sample_pattern)
+    else:
+        inp_path = Path(args.inp).expanduser()
+        if not inp_path.exists():
+            print(f"Input not found: {inp_path}", file=sys.stderr)
+            return 1
+        img = Image.open(inp_path).convert("RGBA")
     src_w, src_h = img.size
 
     # Determine target size
@@ -195,17 +197,22 @@ def main() -> int:
     arr = np.flipud(arr)
 
     out_img = Image.fromarray(arr, mode="RGBA")
-    out_img.save(out_path)
-    print(f"Wrote {out_path} using {args.method} ({src_w}x{src_h} -> {tgt_w}x{tgt_h})")
+    if out_path:
+        out_img.save(out_path)
+        print(f"Wrote {out_path} using {args.method} ({src_w}x{src_h} -> {tgt_w}x{tgt_h})")
 
     if args.compare:
         pillow_resample = PIL_RESAMPLE[args.method]
         pillow_img = img.resize((tgt_w, tgt_h), resample=pillow_resample)
-        pillow_out = Path(args.pillow_out or (str(out_path.with_stem(out_path.stem + "_pillow"))))
-        pillow_img.save(pillow_out)
+        if args.pillow_out:
+            pillow_out = Path(args.pillow_out).expanduser()
+            pillow_img.save(pillow_out)
+            print(f"Compare -> Pillow saved: {pillow_out}", end="")
+        else:
+            print("Compare", end="")
         diff_out_path = Path(args.diff_out).expanduser() if args.diff_out else None
         mae, mse, maxv = compare_and_save(out_img, pillow_img, diff_out_path)
-        print(f"Compare -> Pillow saved: {pillow_out}; MAE={mae:.3f} MSE={mse:.3f} MAX={maxv}")
+        print(f" -> MAE={mae:.3f} MSE={mse:.3f} MAX={maxv}")
         if diff_out_path:
             print(f"Diff saved to {diff_out_path}")
 
