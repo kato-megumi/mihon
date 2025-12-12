@@ -21,7 +21,6 @@ float lanczos(float x) {
 
 void main() {
     vec2 scale = uTextureSize / uOutputSize;
-    float scaleFactor = max(scale.x, scale.y);
     int radiusX = int(clamp(ceil(a * scale.x), 3.0, float(MAX_RADIUS)));
     int radiusY = int(clamp(ceil(a * scale.y), 3.0, float(MAX_RADIUS)));
 
@@ -40,8 +39,8 @@ void main() {
             vec2 sampleCoord = (samplePos + 0.5) / uTextureSize;
             sampleCoord = clamp(sampleCoord, vec2(0.0), vec2(1.0));
 
-            float wx = lanczos((float(x) - f.x) / scale.x);
-            float wy = lanczos((float(y) - f.y) / scale.y);
+            float wx = lanczos((float(x) - f.x) / max(scale.x, 1.0));
+            float wy = lanczos((float(y) - f.y) / max(scale.y, 1.0));
             float weight = wx * wy;
 
             color += texture2D(uTexture, sampleCoord) * weight;
