@@ -48,6 +48,8 @@ android {
             isMinifyEnabled = Config.enableCodeShrink
             isShrinkResources = Config.enableCodeShrink
 
+            versionNameSuffix = ".${getCommitCount()}"
+
             proguardFiles("proguard-android-optimize.txt", "proguard-rules.pro")
 
             buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = true)}\"")
