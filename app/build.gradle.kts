@@ -24,7 +24,7 @@ android {
     namespace = "eu.kanade.tachiyomi"
 
     defaultConfig {
-        applicationId = "app.mihon"
+        applicationId = "app.mihon.mod"
 
         versionCode = 20
         versionName = "0.19.7"
@@ -47,6 +47,8 @@ android {
         val release by getting {
             isMinifyEnabled = Config.enableCodeShrink
             isShrinkResources = Config.enableCodeShrink
+
+            versionNameSuffix = ".${getLatestCommitCount()}"
 
             proguardFiles("proguard-android-optimize.txt", "proguard-rules.pro")
 

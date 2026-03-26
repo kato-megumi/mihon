@@ -49,6 +49,7 @@ import com.google.android.material.transition.platform.MaterialContainerTransfor
 import com.hippo.unifile.UniFile
 import eu.kanade.core.util.ifSourcesLoaded
 import eu.kanade.domain.base.BasePreferences
+import eu.kanade.domain.manga.model.readingMode
 import eu.kanade.presentation.reader.DisplayRefreshHost
 import eu.kanade.presentation.reader.OrientationSelectDialog
 import eu.kanade.presentation.reader.ReaderContentOverlay
@@ -76,6 +77,8 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.system.isNightMode
 import eu.kanade.tachiyomi.util.system.openInBrowser
@@ -204,7 +207,7 @@ class ReaderActivity : BaseActivity() {
             .launchIn(lifecycleScope)
 
         viewModel.state
-            .map { it.manga }
+            .map { it.manga?.readingMode }
             .distinctUntilChanged()
             .filterNotNull()
             .onEach { updateViewer() }
@@ -222,6 +225,9 @@ class ReaderActivity : BaseActivity() {
                 when (event) {
                     ReaderViewModel.Event.ReloadViewerChapters -> {
                         viewModel.state.value.viewerChapters?.let(::setChapters)
+                    }
+                    ReaderViewModel.Event.RefreshImages -> {
+                        refreshViewerImages()
                     }
                     ReaderViewModel.Event.PageChanged -> {
                         displayRefreshHost.flash()
@@ -254,6 +260,7 @@ class ReaderActivity : BaseActivity() {
                 readerState = viewModel.state,
                 onChangeReadingMode = viewModel::setMangaReadingMode,
                 onChangeOrientation = viewModel::setMangaOrientationType,
+                onChangeImageInterpolation = viewModel::setMangaImageInterpolation,
             )
         }
 
@@ -321,11 +328,25 @@ class ReaderActivity : BaseActivity() {
                 )
             }
             is ReaderViewModel.Dialog.PageActions -> {
+                val pageActionsDialog = state.dialog as ReaderViewModel.Dialog.PageActions
+                val page = pageActionsDialog.page
+                val viewer = state.viewer
+                val hasScaledImage = viewer?.hasScaledImage(page) ?: false
                 ReaderPageActionsDialog(
                     onDismissRequest = onDismissRequest,
                     onSetAsCover = viewModel::setAsCover,
                     onShare = viewModel::shareImage,
                     onSave = viewModel::saveImage,
+                    onSaveScaled = if (hasScaledImage) {
+                        {
+                            viewer?.getScaledBitmap(page)?.let { bitmap ->
+                                viewModel.saveScaledImage(bitmap)
+                            }
+                        }
+                    } else {
+                        null
+                    },
+                    hasScaledImage = hasScaledImage,
                 )
             }
             null -> {}
@@ -605,6 +626,17 @@ class ReaderActivity : BaseActivity() {
             viewModel.getChapterUrl()?.let { url ->
                 assistUrl = url
             }
+        }
+    }
+
+    /**
+     * Refreshes the viewer images. Used when image display settings like interpolation change.
+     */
+    private fun refreshViewerImages() {
+        val viewer = viewModel.state.value.viewer ?: return
+        when (viewer) {
+            is PagerViewer -> viewer.config.imagePropertyChangedListener?.invoke()
+            is WebtoonViewer -> viewer.config.imagePropertyChangedListener?.invoke()
         }
     }
 

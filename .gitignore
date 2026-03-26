@@ -14,3 +14,9 @@ local.properties
 
 # macOS specific files
 .DS_Store
+
+# Tools
+tools/.venv/
+tools/__pycache__/
+*.keystore
+tools/*.png

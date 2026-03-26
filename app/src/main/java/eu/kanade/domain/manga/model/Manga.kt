@@ -3,6 +3,7 @@ package eu.kanade.domain.manga.model
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.ui.reader.setting.ImageInterpolation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import tachiyomi.core.common.preference.TriState
@@ -19,6 +20,9 @@ val Manga.readingMode: Long
 
 val Manga.readerOrientation: Long
     get() = viewerFlags and ReaderOrientation.MASK.toLong()
+
+val Manga.imageInterpolation: Long
+    get() = viewerFlags and ImageInterpolation.MASK.toLong()
 
 val Manga.downloadedFilter: TriState
     get() {

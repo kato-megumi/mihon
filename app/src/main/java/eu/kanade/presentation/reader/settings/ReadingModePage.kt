@@ -8,8 +8,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import eu.kanade.domain.manga.model.imageInterpolation
 import eu.kanade.domain.manga.model.readerOrientation
 import eu.kanade.domain.manga.model.readingMode
+import eu.kanade.tachiyomi.ui.reader.setting.ImageInterpolation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
@@ -46,6 +48,17 @@ internal fun ColumnScope.ReadingModePage(screenModel: ReaderSettingsScreenModel)
             FilterChip(
                 selected = it == orientation,
                 onClick = { screenModel.onChangeOrientation(it) },
+                label = { Text(stringResource(it.stringRes)) },
+            )
+        }
+    }
+
+    val interpolation = remember(manga) { ImageInterpolation.fromPreference(manga?.imageInterpolation?.toInt()) }
+    SettingsChipRow(MR.strings.pref_image_interpolation) {
+        ImageInterpolation.entries.map {
+            FilterChip(
+                selected = it == interpolation,
+                onClick = { screenModel.onChangeImageInterpolation(it) },
                 label = { Text(stringResource(it.stringRes)) },
             )
         }
