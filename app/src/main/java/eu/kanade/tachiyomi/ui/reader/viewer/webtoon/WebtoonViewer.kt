@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.webtoon
 
+import android.graphics.Bitmap
 import android.graphics.PointF
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -352,6 +353,31 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
             max(0, position - 3),
             min(position + 3, adapter.itemCount - 1),
         )
+    }
+
+    /**
+     * Get the WebtoonPageHolder for the provided page.
+     */
+    private fun getPageHolder(page: ReaderPage): WebtoonPageHolder? {
+        val position = adapter.items.indexOf(page)
+        if (position == -1) return null
+        return recycler.findViewHolderForAdapterPosition(position) as? WebtoonPageHolder
+    }
+
+    override fun getScaledBitmap(page: ReaderPage): Bitmap? {
+        return getPageHolder(page)?.frame?.getScaledBitmap()
+    }
+
+    override fun hasScaledImage(page: ReaderPage): Boolean {
+        return getPageHolder(page)?.frame?.hasScaledImage() ?: false
+    }
+
+    override fun isShowingScaledImage(page: ReaderPage): Boolean {
+        return getPageHolder(page)?.frame?.isShowingScaledImage() ?: true
+    }
+
+    override fun toggleScaledOriginal(page: ReaderPage): Boolean {
+        return getPageHolder(page)?.frame?.toggleScaledOriginal() ?: true
     }
 }
 

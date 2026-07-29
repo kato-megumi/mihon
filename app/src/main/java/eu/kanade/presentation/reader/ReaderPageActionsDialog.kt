@@ -31,6 +31,8 @@ fun ReaderPageActionsDialog(
     onSetAsCover: () -> Unit,
     onShare: (Boolean) -> Unit,
     onSave: () -> Unit,
+    onSaveScaled: (() -> Unit)? = null,
+    hasScaledImage: Boolean = false,
 ) {
     var showSetCoverDialog by remember { mutableStateOf(false) }
 
@@ -72,6 +74,17 @@ fun ReaderPageActionsDialog(
                     onDismissRequest()
                 },
             )
+            if (hasScaledImage && onSaveScaled != null) {
+                ActionButton(
+                    modifier = Modifier.weight(1f),
+                    title = stringResource(MR.strings.action_save_scaled),
+                    icon = MaterialSymbols.Rounded.Save,
+                    onClick = {
+                        onSaveScaled()
+                        onDismissRequest()
+                    },
+                )
+            }
         }
     }
 

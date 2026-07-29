@@ -34,6 +34,9 @@ class PagerConfig(
     var imageScaleType = 1
         private set
 
+    var imageInterpolation = 1
+        private set
+
     var imageZoomType = ReaderPageImageView.ZoomStartPosition.LEFT
         private set
 
@@ -58,6 +61,9 @@ class PagerConfig(
 
         readerPreferences.imageScaleType
             .register({ imageScaleType = it }, { imagePropertyChangedListener?.invoke() })
+
+        readerPreferences.imageInterpolation
+            .register({ imageInterpolation = it }, { imagePropertyChangedListener?.invoke() })
 
         readerPreferences.zoomStart
             .register({ zoomTypeFromPreference(it) }, { imagePropertyChangedListener?.invoke() })

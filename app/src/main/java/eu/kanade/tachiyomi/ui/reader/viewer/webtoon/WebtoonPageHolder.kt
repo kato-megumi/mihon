@@ -42,7 +42,7 @@ import tachiyomi.i18n.MR
  * @constructor creates a new webtoon holder.
  */
 class WebtoonPageHolder(
-    private val frame: ReaderPageImageView,
+    val frame: ReaderPageImageView,
     viewer: WebtoonViewer,
 ) : WebtoonBaseHolder(frame, viewer) {
 
@@ -203,6 +203,7 @@ class WebtoonPageHolder(
                         zoomDuration = viewer.config.doubleTapAnimDuration,
                         minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_FIT_WIDTH,
                         cropBorders = viewer.config.imageCropBorders,
+                        interpolationMethod = viewer.activity.viewModel.getMangaImageInterpolation(),
                     ),
                 )
                 removeErrorLayout()
