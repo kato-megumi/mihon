@@ -1,5 +1,6 @@
 package eu.kanade.domain.manga.interactor
 
+import eu.kanade.tachiyomi.ui.reader.setting.ImageInterpolation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import tachiyomi.domain.manga.model.MangaUpdate
@@ -25,6 +26,16 @@ class SetMangaViewerFlags(
             MangaUpdate(
                 id = id,
                 viewerFlags = manga.viewerFlags.setFlag(flag, ReaderOrientation.MASK.toLong()),
+            ),
+        )
+    }
+
+    suspend fun awaitSetImageInterpolation(id: Long, flag: Long) {
+        val manga = mangaRepository.getMangaById(id)
+        mangaRepository.update(
+            MangaUpdate(
+                id = id,
+                viewerFlags = manga.viewerFlags.setFlag(flag, ImageInterpolation.MASK.toLong()),
             ),
         )
     }

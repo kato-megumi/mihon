@@ -69,6 +69,8 @@ class ReaderPreferences(
 
     val imageScaleType: Preference<Int> = preferenceStore.getInt("pref_image_scale_type_key", 1)
 
+    val imageInterpolation: Preference<Int> = preferenceStore.getInt("pref_image_interpolation_key", 1)
+
     val zoomStart: Preference<Int> = preferenceStore.getInt("pref_zoom_start_key", 1)
 
     val readerTheme: Preference<Int> = preferenceStore.getInt("pref_reader_theme_key", 1)
@@ -235,6 +237,13 @@ class ReaderPreferences(
             MR.strings.scale_type_fit_height,
             MR.strings.scale_type_original_size,
             MR.strings.scale_type_smart_fit,
+        )
+
+        val ImageInterpolation = listOf(
+            MR.strings.interpolation_linear,
+            MR.strings.interpolation_area,
+            MR.strings.interpolation_cubic,
+            MR.strings.interpolation_lanczos3,
         )
 
         val ZoomStart = listOf(
