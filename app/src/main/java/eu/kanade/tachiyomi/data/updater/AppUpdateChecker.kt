@@ -37,9 +37,9 @@ class AppUpdateChecker(
 
 val GITHUB_REPO: String by lazy {
     if (isNightlyBuildType) {
-        "mihonapp/mihon-preview"
+        "kato-megumi/mihon"
     } else {
-        "mihonapp/mihon"
+        "kato-megumi/mihon"
     }
 }
 

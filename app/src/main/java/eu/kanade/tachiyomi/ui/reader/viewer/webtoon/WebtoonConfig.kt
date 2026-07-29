@@ -46,6 +46,9 @@ class WebtoonConfig(
         readerPreferences.cropBordersWebtoon
             .register({ imageCropBorders = it }, { imagePropertyChangedListener?.invoke() })
 
+        readerPreferences.imageInterpolation
+            .register({ imagePropertyChangedListener?.invoke() })
+
         readerPreferences.webtoonSidePadding
             .register({ sidePadding = it }, { imagePropertyChangedListener?.invoke() })
 
