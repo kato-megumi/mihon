@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" translatable="false">Mihon</string>
+    <string name="app_name" translatable="false">Mihon Mod</string>
 
     <!-- Generic strings -->
     <string name="on">On</string>
@@ -468,6 +468,16 @@
     <string name="scale_type_fit_height">Fit height</string>
     <string name="scale_type_original_size">Original size</string>
     <string name="scale_type_smart_fit">Smart fit</string>
+    <string name="pref_image_interpolation">Image interpolation</string>
+    <string name="interpolation_nearest">Nearest</string>
+    <string name="interpolation_linear">Linear (Default)</string>
+    <string name="interpolation_area">Area</string>
+    <string name="interpolation_cubic">Cubic</string>
+    <string name="interpolation_lanczos3">Lanczos3</string>
+    <string name="interpolation_lanczos4">Lanczos4</string>
+    <string name="action_save_scaled">Save scaled</string>
+    <string name="action_view_original">View original</string>
+    <string name="action_view_scaled">View scaled</string>
     <string name="pref_navigate_pan">Pan wide images</string>
     <string name="pref_landscape_zoom">Automatically zoom into wide images</string>
     <string name="pref_zoom_start">Zoom start position</string>

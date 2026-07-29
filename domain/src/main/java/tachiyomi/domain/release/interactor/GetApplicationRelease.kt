@@ -62,8 +62,8 @@ class GetApplicationRelease(
             val newSemVer = newVersion.split(".").map { it.toInt() }
             val oldSemVer = oldVersion.split(".").map { it.toInt() }
 
-            oldSemVer.mapIndexed { index, i ->
-                if (newSemVer[index] > i) {
+            newSemVer.mapIndexed { index, i ->
+                if (newSemVer[index] > oldSemVer.getOrElse(index) { 0 }) {
                     return true
                 }
             }

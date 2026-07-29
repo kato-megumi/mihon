@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.chapter.model.toDbChapter
 import eu.kanade.domain.manga.interactor.SetMangaViewerFlags
+import eu.kanade.domain.manga.model.imageInterpolation
 import eu.kanade.domain.manga.model.readerOrientation
 import eu.kanade.domain.manga.model.readingMode
 import eu.kanade.domain.source.interactor.GetIncognitoState
@@ -30,6 +31,7 @@ import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.setting.ImageInterpolation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
@@ -735,6 +737,34 @@ class ReaderViewModel @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Returns the image interpolation used by this manga or the default one.
+     */
+    fun getMangaImageInterpolation(resolveDefault: Boolean = true): Int {
+        val default = readerPreferences.imageInterpolation.get()
+        val interpolation = ImageInterpolation.fromPreference(manga?.imageInterpolation?.toInt())
+        return when {
+            resolveDefault && interpolation == ImageInterpolation.DEFAULT -> default
+            else -> ImageInterpolation.toPreferenceValue(interpolation) ?: default
+        }
+    }
+
+    /**
+     * Updates the image interpolation for the open manga.
+     */
+    fun setMangaImageInterpolation(interpolation: ImageInterpolation) {
+        val manga = manga ?: return
+        viewModelScope.launchIO {
+            setMangaViewerFlags.awaitSetImageInterpolation(manga.id, interpolation.flagValue.toLong())
+            mutableState.update {
+                it.copy(
+                    manga = getManga.await(manga.id),
+                )
+            }
+            eventChannel.send(Event.RefreshImages)
+        }
+    }
+
     fun toggleCropBorders(): Boolean {
         val isPagerType = ReadingMode.isPagerType(getMangaReadingMode())
         return if (isPagerType) {
@@ -821,6 +851,49 @@ class ReaderViewModel @JvmOverloads constructor(
                 val uri = imageSaver.save(
                     image = Image.Page(
                         inputStream = page.stream!!,
+                        name = filename,
+                        location = Location.Pictures.create(relativePath),
+                    ),
+                )
+                withUIContext {
+                    notifier.onComplete(uri)
+                    eventChannel.send(Event.SavedImage(SaveImageResult.Success(uri)))
+                }
+            } catch (e: Throwable) {
+                notifier.onError(e.message)
+                eventChannel.send(Event.SavedImage(SaveImageResult.Error(e)))
+            }
+        }
+    }
+
+    /**
+     * Saves the scaled/interpolated image of the selected page.
+     * The bitmap is obtained from the viewer and saved to the pictures directory.
+     */
+    fun saveScaledImage(bitmap: android.graphics.Bitmap) {
+        val page = (state.value.dialog as? Dialog.PageActions)?.page
+        if (page == null) return
+        val manga = manga ?: return
+
+        val context = Injekt.get<Application>()
+        val notifier = SaveImageNotifier(context)
+        notifier.onClear()
+
+        val filename = generateFilename(manga, page) + "_scaled"
+
+        // Pictures directory.
+        val relativePath = if (readerPreferences.folderPerManga.get()) {
+            DiskUtil.buildValidFilename(manga.title)
+        } else {
+            ""
+        }
+
+        // Save bitmap in background.
+        viewModelScope.launchNonCancellable {
+            try {
+                val uri = imageSaver.save(
+                    image = Image.Cover(
+                        bitmap = bitmap,
                         name = filename,
                         location = Location.Pictures.create(relativePath),
                     ),
@@ -977,6 +1050,7 @@ class ReaderViewModel @JvmOverloads constructor(
 
     sealed interface Event {
         data object ReloadViewerChapters : Event
+        data object RefreshImages : Event
         data object PageChanged : Event
         data class SetOrientation(val orientation: Int) : Event
         data class SetCoverResult(val result: SetAsCoverResult) : Event

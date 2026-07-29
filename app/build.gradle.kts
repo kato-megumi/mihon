@@ -30,7 +30,7 @@ android {
     namespace = "eu.kanade.tachiyomi"
 
     defaultConfig {
-        applicationId = "app.mihon"
+        applicationId = "app.mihon.mod"
 
         versionCode = 26
         versionName = "0.20.1"
@@ -84,6 +84,8 @@ android {
             signingConfig = debug.signingConfig
 
             isProfileable = true
+
+            versionNameSuffix = ".${getLatestCommitCount()}"
 
             proguardFiles("proguard-android-optimize.txt", "proguard-rules.pro")
 
